@@ -11,8 +11,6 @@
         <string>kTCCServicePhotos</string>
         <string>kTCCServiceMediaLibrary</string>
     </array>
-    <key>com.apple.private.security.no-sandbox</key>
-    <true/>
     <key>get-task-allow</key>
     <true/>
 </dict>

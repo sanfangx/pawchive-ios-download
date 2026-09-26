@@ -17,11 +17,7 @@
         <string>kTCCServiceMediaLibrary</string>
     </array>
 
-    <!-- 3. 无沙盒限制：自由访问和保存至系统下载目录 -->
-    <key>com.apple.private.security.no-sandbox</key>
-    <true/>
-    
-    <!-- 4. 调试与基础特权 -->
+    <!-- 3. 调试与基础特权 -->
     <key>get-task-allow</key>
     <true/>
 </dict>

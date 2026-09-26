@@ -24,33 +24,24 @@
 > 巨魔环境拥有不受 App Store 约束的私有 Entitlements 特权，全面解除 iOS 系统的后台与沙盒限制。
 
 ### 2.1 私有 Entitlements 配置 (`TrollStore.entitlements`)
-在打包构建阶段注入以下关键私有权限：
+在打包构建阶段注入核心后台保活权限（**保留标准沙盒以确保与 iOS“文件”App 完美互通**）：
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- 1. 无限后台运行：彻底免除 iOS Watchdog 30s-3min 杀后台机制 -->
+    <!-- 1. 无限后台运行：彻底免除 iOS Watchdog 30s-3min 杀后台机制，锁屏全速下载 -->
     <key>com.apple.multitasking.unlimited</key>
     <true/>
     
-    <!-- 2. TCC 权限绕过：无需弹窗自动获取相册写入/通知等权限 -->
-    <key>com.apple.private.tcc.allow</key>
-    <array>
-        <string>kTCCServicePhotos</string>
-        <string>kTCCServiceMediaLibrary</string>
-    </array>
-
-    <!-- 3. 无沙盒限制：自由访问和保存至系统下载目录 -->
-    <key>com.apple.private.security.no-sandbox</key>
-    <true/>
-    
-    <!-- 4. 调试与基础特权 -->
+    <!-- 2. 调试与基础特权 -->
     <key>get-task-allow</key>
     <true/>
 </dict>
 </plist>
 ```
+> **为何不使用 `com.apple.private.security.no-sandbox`？**  
+> 经架构评估，脱离沙盒会导致 iOS 系统的 `fileproviderd` 无法正确识别 App 容器，从而破坏 `UIFileSharingEnabled`（导致在系统“文件”App 的【我的 iPhone】中无法显示文件夹）。保留标准容器沙盒能确保 ZIP 归档与系统“文件”App 100% 互通，且卸载时不残留垃圾文件。
 
 ### 2.2 真·后台下载保活策略 (True Background Engine)
 1. **进程不断流**：利用 `com.apple.multitasking.unlimited` 申请长期任务，不被系统挂起，锁屏与切后台正常全速下载。
@@ -164,6 +155,7 @@
 | 2026-09-27 | 范围收敛为【图片与视频】 | 自动过滤内部杂项附件，打造纯粹画廊体验 |
 | 2026-09-27 | 确立双重导出：相册 vs ZIP | 相册支持归类；ZIP 保存在 Documents 并挂载至 iOS“文件”App |
 | 2026-09-27 | 敲定完整 UI 规范与设置页细节 | 不自动检测剪贴板；包含首页历史、画廊多选、全屏查看器、5大设置分组 |
+| 2026-09-27 | 明确**移除 `no-sandbox`** 特权 | 经推演，保留标准沙盒是 iOS“文件”App 能正确识别 Documents 容器的前提，避免过度设计 |
 | 2026-09-27 | 确认视频交互规范与轻量化策略 | 视频仅作为可勾选项参与挑选、相册归档与 ZIP 打包，不内置播放器，保持极简轻量；采用 STORE 模式流式打包防 OOM；相册保存成功后自动清除沙盒临时文件；网络完全依赖系统全局分流 |
 
 ---
