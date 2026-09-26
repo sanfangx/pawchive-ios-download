@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <!-- 巨魔容器与标识 -->
+    <key>com.apple.private.security.container-required</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+
     <!-- 1. 无限后台运行：彻底免除 iOS Watchdog 30s-3min 杀后台机制 -->
     <key>com.apple.multitasking.unlimited</key>
     <true/>
