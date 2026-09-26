@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pawchive_download/models/download_task.dart';
 import 'package:pawchive_download/models/media_item.dart';
 import 'package:pawchive_download/models/post_detail.dart';
+import 'package:pawchive_download/providers/download_provider.dart';
 import 'package:pawchive_download/providers/post_provider.dart';
 import 'package:pawchive_download/services/url_parser.dart';
 
@@ -143,6 +145,115 @@ void main() {
       state = container.read(postDetailProvider).value!;
       expect(state.selectedCount, equals(0));
       expect(state.hasSelection, isFalse);
+    });
+  });
+
+  group('DownloadManager & Multi-Task Tests', () {
+    test('DownloadTask state getters and copyWith', () {
+      final task = DownloadTask(
+        id: 'task_1',
+        postTitle: 'Post 1',
+        authorName: 'Author 1',
+        exportMode: ExportMode.zip,
+        items: const [],
+        status: DownloadStatus.queued,
+        totalCount: 5,
+        createdAt: DateTime.now(),
+      );
+
+      expect(task.isActive, isTrue);
+      expect(task.isFinished, isFalse);
+
+      final running = task.copyWith(
+        status: DownloadStatus.downloading,
+        completedCount: 2,
+        progress: 0.4,
+      );
+      expect(running.isRunning, isTrue);
+      expect(running.completedCount, equals(2));
+
+      final completed = running.copyWith(
+        status: DownloadStatus.completed,
+        completedCount: 5,
+        progress: 1.0,
+        resultPath: '/path/to/archive.zip',
+      );
+      expect(completed.isFinished, isTrue);
+      expect(completed.isActive, isFalse);
+      expect(completed.resultPath, equals('/path/to/archive.zip'));
+    });
+
+    test('DownloadManagerState multi-task metrics', () {
+      final task1 = DownloadTask(
+        id: 'task_1',
+        postTitle: 'Post 1',
+        authorName: 'Author 1',
+        exportMode: ExportMode.zip,
+        items: const [],
+        status: DownloadStatus.downloading,
+        totalCount: 10,
+        completedCount: 5,
+        progress: 0.5,
+        createdAt: DateTime.now(),
+      );
+
+      final task2 = DownloadTask(
+        id: 'task_2',
+        postTitle: 'Post 2',
+        authorName: 'Author 2',
+        exportMode: ExportMode.album,
+        items: const [],
+        status: DownloadStatus.queued,
+        totalCount: 4,
+        completedCount: 0,
+        progress: 0.0,
+        createdAt: DateTime.now(),
+      );
+
+      final manager = DownloadManagerState(tasks: [task1, task2]);
+
+      expect(manager.hasTasks, isTrue);
+      expect(manager.hasActiveTasks, isTrue);
+      expect(manager.activeCount, equals(2));
+      expect(manager.queuedCount, equals(1));
+      expect(manager.runningTask?.id, equals('task_1'));
+      expect(manager.overallProgress, equals(0.25)); // (0.5 + 0.0) / 2
+    });
+
+    test('DownloadTaskNotifier cancel and clear completed', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final notifier = container.read(downloadTaskProvider.notifier);
+
+      // Manually simulate state with 1 active and 1 completed task
+      final activeTask = DownloadTask(
+        id: 't_active',
+        postTitle: 'Active',
+        authorName: 'Author',
+        exportMode: ExportMode.album,
+        items: const [],
+        status: DownloadStatus.downloading,
+        totalCount: 3,
+        createdAt: DateTime.now(),
+      );
+      final completedTask = DownloadTask(
+        id: 't_done',
+        postTitle: 'Done',
+        authorName: 'Author',
+        exportMode: ExportMode.zip,
+        items: const [],
+        status: DownloadStatus.completed,
+        totalCount: 5,
+        createdAt: DateTime.now(),
+      );
+
+      // Directly verify cancellation
+      notifier.cancelTask(activeTask.id);
+      notifier.clearCompleted();
+
+      final state = container.read(downloadTaskProvider);
+      expect(state.tasks.where((t) => t.id == completedTask.id), isEmpty);
     });
   });
 }

@@ -12,50 +12,127 @@ final downloadServiceProvider =
     Provider<DownloadService>((ref) => DownloadService());
 
 final downloadTaskProvider =
-    StateNotifierProvider<DownloadTaskNotifier, DownloadTaskState>((ref) {
+    StateNotifierProvider<DownloadTaskNotifier, DownloadManagerState>((ref) {
   return DownloadTaskNotifier(ref);
 });
 
-class DownloadTaskNotifier extends StateNotifier<DownloadTaskState> {
+class DownloadTaskNotifier extends StateNotifier<DownloadManagerState> {
   final Ref _ref;
+  bool _isProcessing = false;
+  final Map<String, DownloadService> _activeServices = {};
 
-  DownloadTaskNotifier(this._ref) : super(const DownloadTaskState());
+  DownloadTaskNotifier(this._ref) : super(const DownloadManagerState());
 
-  void cancelDownload() {
-    _ref.read(downloadServiceProvider).cancel();
-    state = state.copyWith(status: DownloadStatus.cancelled);
-  }
-
-  void reset() {
-    state = const DownloadTaskState();
-  }
-
-  /// Start downloading and exporting selected items
-  Future<void> startExport({
+  /// Enqueue an export task and start the queue processor
+  String startExport({
     required PostDetail post,
     required List<MediaItem> selectedItems,
     required ExportMode mode,
-  }) async {
-    final settings = _ref.read(settingsProvider);
-    final downloadService = _ref.read(downloadServiceProvider);
+  }) {
+    if (selectedItems.isEmpty) return '';
 
-    if (selectedItems.isEmpty) return;
-
-    state = DownloadTaskState(
-      status: DownloadStatus.downloading,
+    final taskId =
+        'task_${DateTime.now().millisecondsSinceEpoch}_${state.tasks.length}';
+    final newTask = DownloadTask(
+      id: taskId,
+      postTitle: post.title,
+      authorName: post.authorName,
       exportMode: mode,
+      items: selectedItems,
+      status: DownloadStatus.queued,
       totalCount: selectedItems.length,
-      completedCount: 0,
-      failedCount: 0,
-      progress: 0.0,
-      currentSpeed: '0 KB/s',
-      currentFileName: selectedItems.first.name,
+      createdAt: DateTime.now(),
+    );
+
+    // Prepend new task so newer tasks appear first in UI
+    state = state.copyWith(tasks: [newTask, ...state.tasks]);
+
+    // Kick off queue processing
+    _processQueue();
+    return taskId;
+  }
+
+  void cancelTask(String taskId) {
+    final service = _activeServices[taskId];
+    if (service != null) {
+      service.cancel();
+      _activeServices.remove(taskId);
+    }
+
+    _updateTask(taskId, (t) => t.copyWith(status: DownloadStatus.cancelled));
+  }
+
+  void cancelAll() {
+    for (final task in state.activeTasks) {
+      cancelTask(task.id);
+    }
+  }
+
+  void clearCompleted() {
+    state = state.copyWith(
+      tasks: state.tasks.where((t) => t.isActive).toList(),
+    );
+  }
+
+  void removeTask(String taskId) {
+    cancelTask(taskId);
+    state = state.copyWith(
+      tasks: state.tasks.where((t) => t.id != taskId).toList(),
+    );
+  }
+
+  void _updateTask(
+      String taskId, DownloadTask Function(DownloadTask) updater) {
+    state = state.copyWith(
+      tasks: state.tasks.map((t) => t.id == taskId ? updater(t) : t).toList(),
+    );
+  }
+
+  Future<void> _processQueue() async {
+    if (_isProcessing) return;
+    _isProcessing = true;
+
+    try {
+      while (true) {
+        // Find next queued task (oldest queued first: FIFO)
+        final queuedList = state.tasks
+            .where((t) => t.status == DownloadStatus.queued)
+            .toList();
+        if (queuedList.isEmpty) break;
+
+        // Since we prepended newer tasks, the oldest queued is the last in queuedList
+        final currentTask = queuedList.last;
+        await _executeTask(currentTask);
+      }
+    } finally {
+      _isProcessing = false;
+    }
+  }
+
+  Future<void> _executeTask(DownloadTask task) async {
+    // Double check if cancelled before starting
+    final currentStatus = state.tasks
+        .firstWhere((t) => t.id == task.id, orElse: () => task)
+        .status;
+    if (currentStatus == DownloadStatus.cancelled) return;
+
+    final settings = _ref.read(settingsProvider);
+    final downloadService = DownloadService();
+    _activeServices[task.id] = downloadService;
+
+    _updateTask(
+      task.id,
+      (t) => t.copyWith(
+        status: DownloadStatus.downloading,
+        currentSpeed: '0 KB/s',
+        currentFileName: t.items.first.name,
+      ),
     );
 
     try {
       // 1. Download files to temporary directory
       final downloadedResults = await downloadService.downloadBatch(
-        items: selectedItems,
+        items: task.items,
         concurrency: settings.concurrency,
         onProgress: ({
           required int completedCount,
@@ -64,31 +141,40 @@ class DownloadTaskNotifier extends StateNotifier<DownloadTaskState> {
           required String speedStr,
           required String currentFileName,
         }) {
-          state = state.copyWith(
-            completedCount: completedCount,
-            totalCount: totalCount,
-            progress: overallProgress,
-            currentSpeed: speedStr,
-            currentFileName: currentFileName,
+          _updateTask(
+            task.id,
+            (t) => t.copyWith(
+              completedCount: completedCount,
+              totalCount: totalCount,
+              progress: overallProgress,
+              currentSpeed: speedStr,
+              currentFileName: currentFileName,
+            ),
           );
         },
       );
 
+      _activeServices.remove(task.id);
+
       final successDownloaded =
           downloadedResults.where((i) => i.isDownloaded).toList();
-      final failedCount = selectedItems.length - successDownloaded.length;
+      final failedCount = task.items.length - successDownloaded.length;
 
       if (successDownloaded.isEmpty) {
-        throw Exception('所有媒体文件下载均失败，请检查网络连接');
+        throw Exception('所有媒体文件下载均失败，请检查网络');
       }
 
       // 2. Export based on mode
-      if (mode == ExportMode.album) {
-        state = state.copyWith(status: DownloadStatus.savingToAlbum);
+      if (task.exportMode == ExportMode.album) {
+        _updateTask(
+          task.id,
+          (t) => t.copyWith(status: DownloadStatus.savingToAlbum),
+        );
+
         final albumName = AlbumService.formatAlbumName(
           prefix: settings.albumNamePrefix,
-          author: post.authorName,
-          title: post.title,
+          author: task.authorName,
+          title: task.postTitle,
         );
 
         final savedCount = await AlbumService.saveToAlbum(
@@ -97,17 +183,24 @@ class DownloadTaskNotifier extends StateNotifier<DownloadTaskState> {
           cleanCacheAfterSave: settings.cleanCacheAfterAlbumSave,
         );
 
-        state = state.copyWith(
-          status: DownloadStatus.completed,
-          completedCount: savedCount,
-          failedCount: failedCount,
-          progress: 1.0,
+        _updateTask(
+          task.id,
+          (t) => t.copyWith(
+            status: DownloadStatus.completed,
+            completedCount: savedCount,
+            failedCount: failedCount,
+            progress: 1.0,
+          ),
         );
       } else {
-        state = state.copyWith(status: DownloadStatus.packingZip);
+        _updateTask(
+          task.id,
+          (t) => t.copyWith(status: DownloadStatus.packingZip),
+        );
+
         final zipFileName = ZipService.formatZipName(
-          author: post.authorName,
-          postId: post.id,
+          author: task.authorName,
+          postId: task.id,
         );
 
         final zipPath = await ZipService.packageZip(
@@ -116,12 +209,15 @@ class DownloadTaskNotifier extends StateNotifier<DownloadTaskState> {
           cleanCacheAfterPack: true,
         );
 
-        state = state.copyWith(
-          status: DownloadStatus.completed,
-          completedCount: successDownloaded.length,
-          failedCount: failedCount,
-          progress: 1.0,
-          resultPath: zipPath,
+        _updateTask(
+          task.id,
+          (t) => t.copyWith(
+            status: DownloadStatus.completed,
+            completedCount: successDownloaded.length,
+            failedCount: failedCount,
+            progress: 1.0,
+            resultPath: zipPath,
+          ),
         );
       }
 
@@ -131,16 +227,22 @@ class DownloadTaskNotifier extends StateNotifier<DownloadTaskState> {
       }
       if (settings.notifyOnComplete) {
         NotificationService.showDownloadComplete(
-          title: post.title,
-          totalCount: state.completedCount,
-          isZip: mode == ExportMode.zip,
+          title: task.postTitle,
+          totalCount: successDownloaded.length,
+          isZip: task.exportMode == ExportMode.zip,
         );
       }
     } catch (e) {
-      if (state.status != DownloadStatus.cancelled) {
-        state = state.copyWith(
-          status: DownloadStatus.failed,
-          errorMessage: e.toString().replaceAll('Exception: ', ''),
+      _activeServices.remove(task.id);
+      final current =
+          state.tasks.firstWhere((t) => t.id == task.id, orElse: () => task);
+      if (current.status != DownloadStatus.cancelled) {
+        _updateTask(
+          task.id,
+          (t) => t.copyWith(
+            status: DownloadStatus.failed,
+            errorMessage: e.toString().replaceAll('Exception: ', ''),
+          ),
         );
       }
     }

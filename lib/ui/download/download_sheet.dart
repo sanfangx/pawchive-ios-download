@@ -10,24 +10,28 @@ class DownloadSheet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final taskState = ref.watch(downloadTaskProvider);
+    final managerState = ref.watch(downloadTaskProvider);
+    final tasks = managerState.tasks;
 
     return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.78,
+      ),
       padding: EdgeInsets.only(
-        top: 20,
-        left: 20,
-        right: 20,
-        bottom: MediaQuery.of(context).padding.bottom + 20,
+        top: 16,
+        left: 16,
+        right: 16,
+        bottom: MediaQuery.of(context).padding.bottom + 16,
       ),
       decoration: const BoxDecoration(
         color: AppColors.cardBackground,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Drag handle
+          // 1. Drag handle
           Center(
             child: Container(
               width: 36,
@@ -38,95 +42,97 @@ class DownloadSheet extends ConsumerWidget {
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
 
-          // Header title & icon
+          // 2. Header with title & minimize button
           Row(
             children: [
-              _buildStatusIcon(taskState.status),
-              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      _getStatusTitle(taskState),
-                      style: const TextStyle(
+                    const Text(
+                      '下载任务管理',
+                      style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                         color: AppColors.textPrimary,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
-                      _getStatusSubtitle(taskState),
+                      managerState.hasActiveTasks
+                          ? '${managerState.activeCount} 个任务下载中 · 可随时收起去下载其他帖子'
+                          : '共 ${tasks.length} 个任务记录',
                       style: const TextStyle(
-                        fontSize: 13,
+                        fontSize: 12,
                         color: AppColors.textSecondary,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
-              if (taskState.isActive)
-                Text(
-                  taskState.currentSpeed,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primary,
+
+              // Clear completed button if any finished
+              if (managerState.finishedTasks.isNotEmpty)
+                CupertinoButton(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  onPressed: () {
+                    ref.read(downloadTaskProvider.notifier).clearCompleted();
+                  },
+                  child: const Text(
+                    '清空完成',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ),
-            ],
-          ),
-          const SizedBox(height: 20),
 
-          // Native Cupertino Progress Indicator
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: Container(
-              height: 8,
-              color: AppColors.secondaryCard,
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final progress = taskState.status == DownloadStatus.completed
-                      ? 1.0
-                      : (taskState.totalCount > 0
-                          ? taskState.progress.clamp(0.0, 1.0)
-                          : 0.0);
-                  return Align(
-                    alignment: Alignment.centerLeft,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      width: constraints.maxWidth * progress,
-                      color: taskState.status == DownloadStatus.failed
-                          ? AppColors.destructive
-                          : AppColors.primary,
-                    ),
-                  );
+              // Minimize / Run in background button
+              CupertinoButton(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                color: AppColors.secondaryCard,
+                borderRadius: BorderRadius.circular(16),
+                onPressed: () {
+                  Navigator.of(context).pop();
                 },
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(CupertinoIcons.chevron_down,
+                        size: 14, color: AppColors.primary),
+                    SizedBox(width: 4),
+                    Text(
+                      '收起后台',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+            ],
           ),
           const SizedBox(height: 12),
 
-          // TrollStore Badge
+          // 3. TrollStore Unlimited Background Privilege Banner
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: AppColors.primary.withAlpha(35),
+              color: AppColors.primary.withAlpha(30),
               borderRadius: BorderRadius.circular(10),
             ),
             child: const Row(
               children: [
                 Icon(CupertinoIcons.bolt_fill,
-                    size: 16, color: AppColors.primary),
+                    size: 15, color: AppColors.primary),
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '巨魔无限后台特权已生效，可直接锁屏或切后台',
+                    '巨魔无限后台保活中：可自由切后台、锁屏或继续下载其他帖子',
                     style: TextStyle(
                       fontSize: 12,
                       color: AppColors.primary,
@@ -137,84 +143,255 @@ class DownloadSheet extends ConsumerWidget {
               ],
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 14),
 
-          // Action buttons
-          if (taskState.isActive)
-            CupertinoButton(
-              color: AppColors.secondaryCard,
-              borderRadius: BorderRadius.circular(12),
-              onPressed: () {
-                ref.read(downloadTaskProvider.notifier).cancelDownload();
-              },
-              child: const Text(
-                '取消任务',
-                style: TextStyle(
-                  color: AppColors.destructive,
-                  fontWeight: FontWeight.w600,
+          // 4. Scrollable Tasks List
+          Flexible(
+            child: tasks.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 36),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(CupertinoIcons.arrow_down_circle,
+                              size: 40, color: AppColors.secondaryCard),
+                          SizedBox(height: 10),
+                          Text(
+                            '暂无下载任务',
+                            style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: tasks.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final task = tasks[index];
+                      return _buildTaskCard(context, ref, task);
+                    },
+                  ),
+          ),
+          const SizedBox(height: 14),
+
+          // 5. Bottom "Continue Browsing" button
+          CupertinoButton.filled(
+            padding: const EdgeInsets.symmetric(vertical: 13),
+            borderRadius: BorderRadius.circular(16),
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: Text(
+              managerState.hasActiveTasks ? '收起面板并继续浏览其他帖子' : '完成',
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTaskCard(
+      BuildContext context, WidgetRef ref, DownloadTask task) {
+    final isZip = task.exportMode == ExportMode.zip;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.secondaryCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: task.isRunning
+              ? AppColors.primary.withAlpha(80)
+              : AppColors.separator,
+          width: 0.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Top title, mode tag & action button
+          Row(
+            children: [
+              _buildStatusIcon(task.status),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      task.postTitle,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withAlpha(30),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            isZip ? 'ZIP' : '相册',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          task.authorName,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textSecondary,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-            )
-          else if (taskState.status == DownloadStatus.completed)
-            Row(
-              children: [
-                if (taskState.resultPath != null) ...[
-                  Expanded(
-                    child: CupertinoButton(
-                      color: AppColors.secondaryCard,
-                      borderRadius: BorderRadius.circular(12),
-                      padding: EdgeInsets.zero,
-                      onPressed: () {
-                        Share.shareXFiles([XFile(taskState.resultPath!)]);
-                      },
-                      child: const Text(
-                        '分享 ZIP',
+              const SizedBox(width: 8),
+
+              // Action button (Cancel / Share / Delete)
+              if (task.isActive)
+                CupertinoButton(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  color: AppColors.cardBackground,
+                  borderRadius: BorderRadius.circular(12),
+                  onPressed: () {
+                    ref.read(downloadTaskProvider.notifier).cancelTask(task.id);
+                  },
+                  child: const Text(
+                    '取消',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.destructive,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                )
+              else if (task.status == DownloadStatus.completed &&
+                  isZip &&
+                  task.resultPath != null)
+                CupertinoButton(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  color: AppColors.primary.withAlpha(40),
+                  borderRadius: BorderRadius.circular(12),
+                  onPressed: () {
+                    Share.shareXFiles([XFile(task.resultPath!)]);
+                  },
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(CupertinoIcons.share,
+                          size: 13, color: AppColors.primary),
+                      SizedBox(width: 4),
+                      Text(
+                        '分享',
                         style: TextStyle(
+                          fontSize: 12,
                           color: AppColors.primary,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                ],
-                Expanded(
-                  child: CupertinoButton(
-                    color: AppColors.primary,
-                    borderRadius: BorderRadius.circular(12),
-                    padding: EdgeInsets.zero,
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      ref.read(downloadTaskProvider.notifier).reset();
-                    },
-                    child: const Text(
-                      '完成',
-                      style: TextStyle(
-                        color: CupertinoColors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                )
+              else
+                CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  onPressed: () {
+                    ref.read(downloadTaskProvider.notifier).removeTask(task.id);
+                  },
+                  child: const Icon(
+                    CupertinoIcons.trash,
+                    size: 16,
+                    color: AppColors.textSecondary,
                   ),
                 ),
-              ],
-            )
-          else if (taskState.status == DownloadStatus.failed ||
-              taskState.status == DownloadStatus.cancelled)
-            CupertinoButton(
-              color: AppColors.primary,
-              borderRadius: BorderRadius.circular(12),
-              onPressed: () {
-                Navigator.of(context).pop();
-                ref.read(downloadTaskProvider.notifier).reset();
-              },
-              child: const Text(
-                '关闭',
-                style: TextStyle(
-                  color: CupertinoColors.white,
-                  fontWeight: FontWeight.bold,
+            ],
+          ),
+
+          // Progress bar & detail line
+          if (task.isActive) ...[
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: Container(
+                height: 6,
+                color: AppColors.cardBackground,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: FractionallySizedBox(
+                    widthFactor: task.status == DownloadStatus.queued
+                        ? 0.0
+                        : task.progress.clamp(0.02, 1.0),
+                    child: Container(
+                      color: AppColors.primary,
+                    ),
+                  ),
                 ),
               ),
             ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _getTaskStatusSubtitle(task),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                if (task.currentSpeed.isNotEmpty &&
+                    task.status == DownloadStatus.downloading)
+                  Text(
+                    task.currentSpeed,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primary,
+                    ),
+                  ),
+              ],
+            ),
+          ] else ...[
+            const SizedBox(height: 6),
+            Text(
+              _getTaskStatusSubtitle(task),
+              style: TextStyle(
+                fontSize: 11,
+                color: task.status == DownloadStatus.failed
+                    ? AppColors.destructive
+                    : AppColors.textSecondary,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -222,66 +399,47 @@ class DownloadSheet extends ConsumerWidget {
 
   Widget _buildStatusIcon(DownloadStatus status) {
     switch (status) {
+      case DownloadStatus.queued:
+        return const Icon(CupertinoIcons.clock_fill,
+            color: AppColors.textSecondary, size: 20);
       case DownloadStatus.downloading:
-        return const CupertinoActivityIndicator(radius: 12);
+        return const CupertinoActivityIndicator(radius: 10);
       case DownloadStatus.savingToAlbum:
         return const Icon(CupertinoIcons.photo_on_rectangle,
-            color: AppColors.primary, size: 28);
+            color: AppColors.primary, size: 20);
       case DownloadStatus.packingZip:
         return const Icon(CupertinoIcons.archivebox_fill,
-            color: CupertinoColors.activeOrange, size: 28);
+            color: CupertinoColors.activeOrange, size: 20);
       case DownloadStatus.completed:
         return const Icon(CupertinoIcons.checkmark_circle_fill,
-            color: AppColors.success, size: 28);
+            color: AppColors.success, size: 20);
       case DownloadStatus.failed:
         return const Icon(CupertinoIcons.xmark_circle_fill,
-            color: AppColors.destructive, size: 28);
+            color: AppColors.destructive, size: 20);
       case DownloadStatus.cancelled:
         return const Icon(CupertinoIcons.slash_circle,
-            color: AppColors.textSecondary, size: 28);
-      case DownloadStatus.idle:
-        return const Icon(CupertinoIcons.arrow_down_circle,
-            color: AppColors.primary, size: 28);
+            color: AppColors.textSecondary, size: 20);
     }
   }
 
-  String _getStatusTitle(DownloadTaskState state) {
-    switch (state.status) {
+  String _getTaskStatusSubtitle(DownloadTask task) {
+    switch (task.status) {
+      case DownloadStatus.queued:
+        return '排队等待中 · 共 ${task.totalCount} 项';
       case DownloadStatus.downloading:
-        return '正在高速下载...';
+        return '正在下载 ${task.completedCount}/${task.totalCount} 项 (${(task.progress * 100).toStringAsFixed(0)}%)';
       case DownloadStatus.savingToAlbum:
-        return '正在写入系统相册...';
+        return '正在保存至相册专属相簿...';
       case DownloadStatus.packingZip:
         return '正在打包 ZIP 归档...';
       case DownloadStatus.completed:
-        return '全部导出完成！';
+        return task.exportMode == ExportMode.zip
+            ? '已保存至 Documents (${task.completedCount} 项)'
+            : '已保存至专属系统相簿 (${task.completedCount} 项)';
       case DownloadStatus.failed:
-        return '导出遇到错误';
+        return task.errorMessage ?? '部分文件下载失败';
       case DownloadStatus.cancelled:
         return '任务已取消';
-      case DownloadStatus.idle:
-        return '准备就绪';
-    }
-  }
-
-  String _getStatusSubtitle(DownloadTaskState state) {
-    switch (state.status) {
-      case DownloadStatus.downloading:
-        return '已完成 ${state.completedCount} / ${state.totalCount} 项 (${(state.progress * 100).toStringAsFixed(0)}%)';
-      case DownloadStatus.savingToAlbum:
-        return '正在无损导入专属相簿...';
-      case DownloadStatus.packingZip:
-        return '正在写入 Documents 目录...';
-      case DownloadStatus.completed:
-        return state.exportMode == ExportMode.zip
-            ? '已保存至 iPhone“文件”App -> Documents'
-            : '已保存至 iOS 系统相册专属相簿';
-      case DownloadStatus.failed:
-        return state.errorMessage ?? '部分文件请求超时或网络异常';
-      case DownloadStatus.cancelled:
-        return '已中止未完成的媒体下载';
-      case DownloadStatus.idle:
-        return '';
     }
   }
 }

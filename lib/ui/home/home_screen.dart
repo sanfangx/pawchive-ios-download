@@ -7,6 +7,7 @@ import '../../providers/history_provider.dart';
 import '../../providers/post_provider.dart';
 import '../../services/url_parser.dart';
 import '../common/cupertino_helpers.dart';
+import '../download/floating_download_pill.dart';
 import '../gallery/gallery_screen.dart';
 import '../settings/settings_screen.dart';
 
@@ -93,7 +94,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return CupertinoPageScaffold(
       backgroundColor: AppColors.background,
-      child: CustomScrollView(
+      child: Stack(
+        children: [
+          CustomScrollView(
         slivers: [
           // iOS Large Title Navigation Bar
           CupertinoSliverNavigationBar(
@@ -437,7 +440,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
 
           const SliverToBoxAdapter(
-            child: SizedBox(height: 30),
+            child: SizedBox(height: 90),
+          ),
+        ],
+      ),
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: MediaQuery.of(context).padding.bottom + 16,
+            child: const FloatingDownloadPill(),
           ),
         ],
       ),

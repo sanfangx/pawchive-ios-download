@@ -8,6 +8,7 @@ import '../../providers/download_provider.dart';
 import '../../providers/post_provider.dart';
 import '../common/cupertino_helpers.dart';
 import '../download/download_sheet.dart';
+import '../download/floating_download_pill.dart';
 import 'image_viewer_screen.dart';
 
 class GalleryScreen extends ConsumerStatefulWidget {
@@ -214,7 +215,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
                     left: 16,
                     right: 16,
                     top: 8,
-                    bottom: 120, // space for floating bottom bar
+                    bottom: 170, // space for action bar + floating download pill
                   ),
                   sliver: SliverGrid(
                     gridDelegate:
@@ -365,7 +366,15 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
               ],
             ),
 
-            // 4. Floating Action Capsule at bottom
+            // 4. Floating Download Pill above action bar
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: MediaQuery.of(context).padding.bottom + 76,
+              child: const FloatingDownloadPill(),
+            ),
+
+            // 5. Floating Action Capsule at bottom
             Positioned(
               left: 16,
               right: 16,
@@ -478,18 +487,18 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
     PostDetail post,
     ExportMode mode,
   ) {
-    // Show download bottom sheet with Cupertino modal popup
-    showCupertinoModalPopup(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const DownloadSheet(),
-    );
-
-    // Trigger export in background
+    // 1. Trigger export in background queue
     ref.read(downloadTaskProvider.notifier).startExport(
           post: post,
           selectedItems: post.selectedItems,
           mode: mode,
         );
+
+    // 2. Show download bottom sheet with barrierDismissible: true so user can dismiss anytime
+    showCupertinoModalPopup(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => const DownloadSheet(),
+    );
   }
 }
