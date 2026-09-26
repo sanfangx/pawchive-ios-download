@@ -3,7 +3,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../models/history_item.dart';
 import '../../providers/history_provider.dart';
 import '../../providers/post_provider.dart';
 import '../../services/url_parser.dart';
@@ -53,22 +52,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
 
     try {
-      final api = ref.read(pawchiveApiProvider);
-      final detail = await api.fetchPost(target);
+      await ref.read(postDetailProvider.notifier).fetchPost(target);
+      final postAsync = ref.read(postDetailProvider);
+      final detail = postAsync.value;
 
-      // Save to history
-      if (detail.items.isNotEmpty) {
-        final historyItem = HistoryItem(
-          url: target.rawUrl,
-          title: detail.title,
-          authorName: detail.authorName,
-          authorAvatarUrl: detail.authorAvatarUrl,
-          coverUrl: detail.items.first.thumbnailUrl,
-          mediaCount: detail.totalCount,
-          service: target.service,
-          savedAt: DateTime.now(),
-        );
-        ref.read(historyProvider.notifier).addHistory(historyItem);
+      if (detail == null) {
+        if (postAsync.hasError) {
+          throw postAsync.error!;
+        }
+        throw Exception('未能获取到帖子数据');
       }
 
       if (mounted) {
@@ -100,16 +92,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final historyList = ref.watch(historyProvider);
 
     return CupertinoPageScaffold(
-      backgroundColor: CupertinoColors.systemGroupedBackground,
+      backgroundColor: AppColors.background,
       child: CustomScrollView(
         slivers: [
           // iOS Large Title Navigation Bar
           CupertinoSliverNavigationBar(
             largeTitle: const Text('Pawchive'),
+            backgroundColor: AppColors.barBackground,
+            border: null,
             trailing: CupertinoButton(
               padding: EdgeInsets.zero,
               child: const Icon(CupertinoIcons.gear,
-                  color: CupertinoColors.activeBlue, size: 24),
+                  color: AppColors.primary, size: 24),
               onPressed: () {
                 Navigator.of(context).push(
                   CupertinoPageRoute(builder: (_) => const SettingsScreen()),
@@ -125,12 +119,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: Container(
                 padding: const EdgeInsets.all(16.0),
                 decoration: BoxDecoration(
-                  color: CupertinoColors.secondarySystemGroupedBackground,
+                  color: AppColors.cardBackground,
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withAlpha(8),
-                      blurRadius: 10,
+                      color: Colors.black.withAlpha(40),
+                      blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
                   ],
@@ -143,7 +137,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: CupertinoColors.label,
+                        color: AppColors.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -151,7 +145,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       '输入帖子链接，自动解析提取高清原图与视频',
                       style: TextStyle(
                         fontSize: 13,
-                        color: CupertinoColors.secondaryLabel,
+                        color: AppColors.textSecondary,
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -163,16 +157,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           child: CupertinoTextField(
                             controller: _urlController,
                             placeholder: '粘贴 pawchive.pw 帖子链接',
-                            placeholderStyle: const TextStyle(
-                              color: CupertinoColors.placeholderText,
+                            style: const TextStyle(
+                              color: AppColors.textPrimary,
                               fontSize: 14,
                             ),
+                            placeholderStyle: const TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 14,
+                            ),
+                            cursorColor: AppColors.primary,
                             padding: const EdgeInsets.symmetric(
                               horizontal: 14,
                               vertical: 12,
                             ),
                             decoration: BoxDecoration(
-                              color: CupertinoColors.tertiarySystemGroupedBackground,
+                              color: AppColors.secondaryCard,
                               borderRadius: BorderRadius.circular(10),
                             ),
                             clearButtonMode: OverlayVisibilityMode.editing,
@@ -189,19 +188,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             horizontal: 14,
                             vertical: 11,
                           ),
-                          color: CupertinoColors.systemGrey5,
+                          color: AppColors.secondaryCard,
                           borderRadius: BorderRadius.circular(10),
                           onPressed: _pasteFromClipboard,
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(CupertinoIcons.doc_on_clipboard,
-                                  size: 16, color: CupertinoColors.activeBlue),
+                                  size: 16, color: AppColors.primary),
                               SizedBox(width: 4),
                               Text(
                                 '粘贴',
                                 style: TextStyle(
-                                  color: CupertinoColors.activeBlue,
+                                  color: AppColors.primary,
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -272,7 +271,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: CupertinoColors.label,
+                      color: AppColors.textPrimary,
                     ),
                   ),
                   if (historyList.isNotEmpty)
@@ -307,7 +306,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         '清空',
                         style: TextStyle(
                           fontSize: 14,
-                          color: CupertinoColors.secondaryLabel,
+                          color: AppColors.textSecondary,
                         ),
                       ),
                     ),
@@ -327,14 +326,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       Icon(
                         CupertinoIcons.clock,
                         size: 48,
-                        color: CupertinoColors.systemGrey4,
+                        color: AppColors.secondaryCard,
                       ),
                       SizedBox(height: 12),
                       Text(
                         '暂无解析历史记录',
                         style: TextStyle(
                           fontSize: 14,
-                          color: CupertinoColors.secondaryLabel,
+                          color: AppColors.textSecondary,
                         ),
                       ),
                     ],
@@ -352,7 +351,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),
                       decoration: BoxDecoration(
-                        color: CupertinoColors.secondarySystemGroupedBackground,
+                        color: AppColors.cardBackground,
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: CupertinoListTile(
@@ -369,13 +368,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             height: 50,
                             fit: BoxFit.cover,
                             placeholder: (context, _) => Container(
-                              color: CupertinoColors.systemGrey5,
+                              color: AppColors.secondaryCard,
                               child: const CupertinoActivityIndicator(),
                             ),
                             errorWidget: (context, url, error) => Container(
-                              color: CupertinoColors.systemGrey5,
+                              color: AppColors.secondaryCard,
                               child: const Icon(CupertinoIcons.photo,
-                                  color: CupertinoColors.systemGrey),
+                                  color: AppColors.textSecondary),
                             ),
                           ),
                         ),
@@ -384,7 +383,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           style: const TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
-                            color: CupertinoColors.label,
+                            color: AppColors.textPrimary,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -397,7 +396,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 item.authorName,
                                 style: const TextStyle(
                                   fontSize: 12,
-                                  color: CupertinoColors.secondaryLabel,
+                                  color: AppColors.textSecondary,
                                 ),
                               ),
                               const SizedBox(width: 8),
@@ -405,8 +404,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 6, vertical: 1),
                                 decoration: BoxDecoration(
-                                  color: CupertinoColors.activeBlue
-                                      .withAlpha(25),
+                                  color: AppColors.primary.withAlpha(35),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
@@ -414,7 +412,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                   style: const TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w600,
-                                    color: CupertinoColors.activeBlue,
+                                    color: AppColors.primary,
                                   ),
                                 ),
                               ),
@@ -424,7 +422,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         trailing: const Icon(
                           CupertinoIcons.forward,
                           size: 16,
-                          color: CupertinoColors.systemGrey3,
+                          color: AppColors.textSecondary,
                         ),
                         onTap: () {
                           _urlController.text = item.url;

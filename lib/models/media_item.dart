@@ -22,7 +22,7 @@ class MediaItem {
     this.fallbackUrl,
     required this.isVideo,
     this.previewOnly = false,
-    this.isSelected = true,
+    this.isSelected = false,
     this.downloadProgress = 0.0,
     this.isDownloaded = false,
     this.localPath,

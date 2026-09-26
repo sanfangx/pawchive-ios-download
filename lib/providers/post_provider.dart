@@ -17,6 +17,10 @@ class PostDetailNotifier extends StateNotifier<AsyncValue<PostDetail?>> {
 
   PostDetailNotifier(this._ref) : super(const AsyncValue.data(null));
 
+  void setPost(PostDetail detail) {
+    state = AsyncValue.data(detail);
+  }
+
   Future<void> fetchPost(PostTarget target) async {
     state = const AsyncValue.loading();
     try {
@@ -44,26 +48,24 @@ class PostDetailNotifier extends StateNotifier<AsyncValue<PostDetail?>> {
   }
 
   void toggleItemSelection(String id) {
-    state.whenData((detail) {
-      if (detail == null) return;
-      final updatedItems = detail.items.map((item) {
-        if (item.id == id) {
-          return item.copyWith(isSelected: !item.isSelected);
-        }
-        return item;
-      }).toList();
-      state = AsyncValue.data(detail.copyWith(items: updatedItems));
-    });
+    final current = state.value;
+    if (current == null) return;
+    final updatedItems = current.items.map((item) {
+      if (item.id == id) {
+        return item.copyWith(isSelected: !item.isSelected);
+      }
+      return item;
+    }).toList();
+    state = AsyncValue.data(current.copyWith(items: updatedItems));
   }
 
   void selectAll(bool select) {
-    state.whenData((detail) {
-      if (detail == null) return;
-      final updatedItems = detail.items.map((item) {
-        return item.copyWith(isSelected: select);
-      }).toList();
-      state = AsyncValue.data(detail.copyWith(items: updatedItems));
-    });
+    final current = state.value;
+    if (current == null) return;
+    final updatedItems = current.items.map((item) {
+      return item.copyWith(isSelected: select);
+    }).toList();
+    state = AsyncValue.data(current.copyWith(items: updatedItems));
   }
 
   void reset() {

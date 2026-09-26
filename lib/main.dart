@@ -1,6 +1,8 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart' show DefaultMaterialLocalizations;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'services/notification_service.dart';
+import 'ui/common/cupertino_helpers.dart';
 import 'ui/home/home_screen.dart';
 
 void main() async {
@@ -25,10 +27,34 @@ class PawchiveApp extends StatelessWidget {
       title: 'Pawchive Downloader',
       debugShowCheckedModeBanner: false,
       theme: CupertinoThemeData(
-        primaryColor: CupertinoColors.activeBlue,
-        scaffoldBackgroundColor: CupertinoColors.systemGroupedBackground,
-        barBackgroundColor: CupertinoColors.secondarySystemGroupedBackground,
+        brightness: Brightness.dark,
+        primaryColor: AppColors.primary,
+        scaffoldBackgroundColor: AppColors.background,
+        barBackgroundColor: AppColors.barBackground,
+        textTheme: CupertinoTextThemeData(
+          primaryColor: AppColors.primary,
+          textStyle: TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 16,
+          ),
+          navTitleTextStyle: TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w600,
+            fontSize: 17,
+          ),
+          navLargeTitleTextStyle: TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.bold,
+            fontSize: 34,
+            letterSpacing: -0.4,
+          ),
+        ),
       ),
+      localizationsDelegates: [
+        DefaultMaterialLocalizations.delegate,
+        DefaultCupertinoLocalizations.delegate,
+        DefaultWidgetsLocalizations.delegate,
+      ],
       home: HomeScreen(),
     );
   }

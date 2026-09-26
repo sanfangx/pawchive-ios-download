@@ -1,9 +1,9 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../models/download_task.dart';
 import '../../providers/download_provider.dart';
+import '../common/cupertino_helpers.dart';
 
 class DownloadSheet extends ConsumerWidget {
   const DownloadSheet({super.key});
@@ -20,7 +20,7 @@ class DownloadSheet extends ConsumerWidget {
         bottom: MediaQuery.of(context).padding.bottom + 20,
       ),
       decoration: const BoxDecoration(
-        color: CupertinoColors.secondarySystemGroupedBackground,
+        color: AppColors.cardBackground,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: Column(
@@ -33,7 +33,7 @@ class DownloadSheet extends ConsumerWidget {
               width: 36,
               height: 5,
               decoration: BoxDecoration(
-                color: CupertinoColors.systemGrey4,
+                color: AppColors.tertiaryCard,
                 borderRadius: BorderRadius.circular(2.5),
               ),
             ),
@@ -54,7 +54,7 @@ class DownloadSheet extends ConsumerWidget {
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: CupertinoColors.label,
+                        color: AppColors.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -62,7 +62,7 @@ class DownloadSheet extends ConsumerWidget {
                       _getStatusSubtitle(taskState),
                       style: const TextStyle(
                         fontSize: 13,
-                        color: CupertinoColors.secondaryLabel,
+                        color: AppColors.textSecondary,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -76,29 +76,38 @@ class DownloadSheet extends ConsumerWidget {
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: CupertinoColors.activeBlue,
+                    color: AppColors.primary,
                   ),
                 ),
             ],
           ),
           const SizedBox(height: 20),
 
-          // Progress indicator
+          // Native Cupertino Progress Indicator
           ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: taskState.status == DownloadStatus.completed
-                  ? 1.0
-                  : (taskState.totalCount > 0
-                      ? taskState.progress.clamp(0.0, 1.0)
-                      : null),
-              backgroundColor: CupertinoColors.systemGrey5,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                taskState.status == DownloadStatus.failed
-                    ? CupertinoColors.destructiveRed
-                    : CupertinoColors.activeBlue,
+            borderRadius: BorderRadius.circular(4),
+            child: Container(
+              height: 8,
+              color: AppColors.secondaryCard,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final progress = taskState.status == DownloadStatus.completed
+                      ? 1.0
+                      : (taskState.totalCount > 0
+                          ? taskState.progress.clamp(0.0, 1.0)
+                          : 0.0);
+                  return Align(
+                    alignment: Alignment.centerLeft,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: constraints.maxWidth * progress,
+                      color: taskState.status == DownloadStatus.failed
+                          ? AppColors.destructive
+                          : AppColors.primary,
+                    ),
+                  );
+                },
               ),
-              minHeight: 8,
             ),
           ),
           const SizedBox(height: 12),
@@ -107,20 +116,20 @@ class DownloadSheet extends ConsumerWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: CupertinoColors.systemBlue.withAlpha(25),
+              color: AppColors.primary.withAlpha(35),
               borderRadius: BorderRadius.circular(10),
             ),
             child: const Row(
               children: [
                 Icon(CupertinoIcons.bolt_fill,
-                    size: 16, color: CupertinoColors.activeBlue),
+                    size: 16, color: AppColors.primary),
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     '巨魔无限后台特权已生效，可直接锁屏或切后台',
                     style: TextStyle(
                       fontSize: 12,
-                      color: CupertinoColors.activeBlue,
+                      color: AppColors.primary,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -133,14 +142,15 @@ class DownloadSheet extends ConsumerWidget {
           // Action buttons
           if (taskState.isActive)
             CupertinoButton(
-              color: CupertinoColors.systemGrey5,
+              color: AppColors.secondaryCard,
+              borderRadius: BorderRadius.circular(12),
               onPressed: () {
                 ref.read(downloadTaskProvider.notifier).cancelDownload();
               },
               child: const Text(
                 '取消任务',
                 style: TextStyle(
-                  color: CupertinoColors.destructiveRed,
+                  color: AppColors.destructive,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -151,39 +161,59 @@ class DownloadSheet extends ConsumerWidget {
                 if (taskState.resultPath != null) ...[
                   Expanded(
                     child: CupertinoButton(
-                      color: CupertinoColors.systemGrey5,
+                      color: AppColors.secondaryCard,
+                      borderRadius: BorderRadius.circular(12),
                       padding: EdgeInsets.zero,
                       onPressed: () {
                         Share.shareXFiles([XFile(taskState.resultPath!)]);
                       },
                       child: const Text(
                         '分享 ZIP',
-                        style: TextStyle(color: CupertinoColors.activeBlue),
+                        style: TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
                   const SizedBox(width: 12),
                 ],
                 Expanded(
-                  child: CupertinoButton.filled(
+                  child: CupertinoButton(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(12),
                     padding: EdgeInsets.zero,
                     onPressed: () {
                       Navigator.of(context).pop();
                       ref.read(downloadTaskProvider.notifier).reset();
                     },
-                    child: const Text('完成'),
+                    child: const Text(
+                      '完成',
+                      style: TextStyle(
+                        color: CupertinoColors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ),
               ],
             )
           else if (taskState.status == DownloadStatus.failed ||
               taskState.status == DownloadStatus.cancelled)
-            CupertinoButton.filled(
+            CupertinoButton(
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(12),
               onPressed: () {
                 Navigator.of(context).pop();
                 ref.read(downloadTaskProvider.notifier).reset();
               },
-              child: const Text('关闭'),
+              child: const Text(
+                '关闭',
+                style: TextStyle(
+                  color: CupertinoColors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
         ],
       ),
@@ -196,22 +226,22 @@ class DownloadSheet extends ConsumerWidget {
         return const CupertinoActivityIndicator(radius: 12);
       case DownloadStatus.savingToAlbum:
         return const Icon(CupertinoIcons.photo_on_rectangle,
-            color: CupertinoColors.activeBlue, size: 28);
+            color: AppColors.primary, size: 28);
       case DownloadStatus.packingZip:
         return const Icon(CupertinoIcons.archivebox_fill,
             color: CupertinoColors.activeOrange, size: 28);
       case DownloadStatus.completed:
         return const Icon(CupertinoIcons.checkmark_circle_fill,
-            color: CupertinoColors.activeGreen, size: 28);
+            color: AppColors.success, size: 28);
       case DownloadStatus.failed:
         return const Icon(CupertinoIcons.xmark_circle_fill,
-            color: CupertinoColors.destructiveRed, size: 28);
+            color: AppColors.destructive, size: 28);
       case DownloadStatus.cancelled:
         return const Icon(CupertinoIcons.slash_circle,
-            color: CupertinoColors.systemGrey, size: 28);
+            color: AppColors.textSecondary, size: 28);
       case DownloadStatus.idle:
         return const Icon(CupertinoIcons.arrow_down_circle,
-            color: CupertinoColors.activeBlue, size: 28);
+            color: AppColors.primary, size: 28);
     }
   }
 

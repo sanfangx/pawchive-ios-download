@@ -6,27 +6,53 @@ import '../../models/download_task.dart';
 import '../../models/post_detail.dart';
 import '../../providers/download_provider.dart';
 import '../../providers/post_provider.dart';
+import '../common/cupertino_helpers.dart';
 import '../download/download_sheet.dart';
 import 'image_viewer_screen.dart';
 
-class GalleryScreen extends ConsumerWidget {
+class GalleryScreen extends ConsumerStatefulWidget {
   final PostDetail post;
 
   const GalleryScreen({super.key, required this.post});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<GalleryScreen> createState() => _GalleryScreenState();
+}
+
+class _GalleryScreenState extends ConsumerState<GalleryScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final current = ref.read(postDetailProvider).value;
+      if (current == null || current.id != widget.post.id) {
+        ref.read(postDetailProvider.notifier).setPost(widget.post);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     // Watch current post details for selection updates
     final postAsync = ref.watch(postDetailProvider);
-    final currentPost = postAsync.value ?? post;
+    final currentPost = (postAsync.value != null &&
+            postAsync.value!.id == widget.post.id)
+        ? postAsync.value!
+        : widget.post;
 
     return CupertinoPageScaffold(
-      backgroundColor: CupertinoColors.systemGroupedBackground,
+      backgroundColor: AppColors.background,
       navigationBar: CupertinoNavigationBar(
+        backgroundColor: AppColors.barBackground,
+        border: null,
         middle: Text(
           currentPost.title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         previousPageTitle: '首页',
       ),
@@ -42,11 +68,11 @@ class GalleryScreen extends ConsumerWidget {
                     margin: const EdgeInsets.all(16),
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: CupertinoColors.secondarySystemGroupedBackground,
+                      color: AppColors.cardBackground,
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: CupertinoColors.systemGrey5.withAlpha(50),
+                          color: Colors.black.withAlpha(40),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
@@ -65,13 +91,13 @@ class GalleryScreen extends ConsumerWidget {
                                 height: 48,
                                 fit: BoxFit.cover,
                                 placeholder: (context, _) => Container(
-                                  color: CupertinoColors.systemGrey5,
+                                  color: AppColors.secondaryCard,
                                   child: const CupertinoActivityIndicator(),
                                 ),
                                 errorWidget: (context, url, error) => Container(
-                                  color: CupertinoColors.systemGrey5,
+                                  color: AppColors.secondaryCard,
                                   child: const Icon(CupertinoIcons.person_fill,
-                                      color: CupertinoColors.systemGrey),
+                                      color: AppColors.textSecondary),
                                 ),
                               ),
                             ),
@@ -85,7 +111,7 @@ class GalleryScreen extends ConsumerWidget {
                                     style: const TextStyle(
                                       fontSize: 17,
                                       fontWeight: FontWeight.bold,
-                                      color: CupertinoColors.label,
+                                      color: AppColors.textPrimary,
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -97,8 +123,8 @@ class GalleryScreen extends ConsumerWidget {
                                         padding: const EdgeInsets.symmetric(
                                             horizontal: 6, vertical: 2),
                                         decoration: BoxDecoration(
-                                          color: CupertinoColors.activeBlue
-                                              .withAlpha(30),
+                                          color: AppColors.primary
+                                              .withAlpha(35),
                                           borderRadius:
                                               BorderRadius.circular(4),
                                         ),
@@ -108,7 +134,7 @@ class GalleryScreen extends ConsumerWidget {
                                           style: const TextStyle(
                                             fontSize: 11,
                                             fontWeight: FontWeight.w600,
-                                            color: CupertinoColors.activeBlue,
+                                            color: AppColors.primary,
                                           ),
                                         ),
                                       ),
@@ -121,8 +147,7 @@ class GalleryScreen extends ConsumerWidget {
                                               : currentPost.publishedAt,
                                           style: const TextStyle(
                                             fontSize: 12,
-                                            color:
-                                                CupertinoColors.secondaryLabel,
+                                            color: AppColors.textSecondary,
                                           ),
                                         ),
                                       ],
@@ -139,7 +164,7 @@ class GalleryScreen extends ConsumerWidget {
                           style: const TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
-                            color: CupertinoColors.label,
+                            color: AppColors.textPrimary,
                           ),
                         ),
                       ],
@@ -159,7 +184,7 @@ class GalleryScreen extends ConsumerWidget {
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
-                            color: CupertinoColors.secondaryLabel,
+                            color: AppColors.textSecondary,
                           ),
                         ),
                         CupertinoButton(
@@ -174,7 +199,7 @@ class GalleryScreen extends ConsumerWidget {
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
-                              color: CupertinoColors.activeBlue,
+                              color: AppColors.primary,
                             ),
                           ),
                         ),
@@ -235,17 +260,17 @@ class GalleryScreen extends ConsumerWidget {
                                   imageUrl: item.thumbnailUrl,
                                   fit: BoxFit.cover,
                                   placeholder: (context, _) => Container(
-                                    color: CupertinoColors.systemGrey5,
+                                    color: AppColors.secondaryCard,
                                     child: const Center(
                                       child: CupertinoActivityIndicator(
                                           radius: 10),
                                     ),
                                   ),
                                   errorWidget: (context, url, error) => Container(
-                                    color: CupertinoColors.systemGrey5,
+                                    color: AppColors.secondaryCard,
                                     child: const Icon(
                                       CupertinoIcons.photo,
-                                      color: CupertinoColors.systemGrey3,
+                                      color: AppColors.textSecondary,
                                     ),
                                   ),
                                 ),
@@ -285,10 +310,10 @@ class GalleryScreen extends ConsumerWidget {
                                     ),
                                   ),
 
-                                // Checkmark selection button (Top Right)
+                                // Checkmark selection button (Top Right, 44x44 touch hit area)
                                 Positioned(
-                                  top: 6,
-                                  right: 6,
+                                  top: 0,
+                                  right: 0,
                                   child: GestureDetector(
                                     behavior: HitTestBehavior.opaque,
                                     onTap: () {
@@ -297,25 +322,34 @@ class GalleryScreen extends ConsumerWidget {
                                           .toggleItemSelection(item.id);
                                     },
                                     child: Container(
-                                      width: 26,
-                                      height: 26,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: item.isSelected
-                                            ? CupertinoColors.activeBlue
-                                            : Colors.black.withAlpha(80),
-                                        border: Border.all(
-                                          color: CupertinoColors.white,
-                                          width: 1.5,
+                                      width: 44,
+                                      height: 44,
+                                      padding: const EdgeInsets.only(
+                                          top: 6, right: 6),
+                                      alignment: Alignment.topRight,
+                                      child: Container(
+                                        width: 26,
+                                        height: 26,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: item.isSelected
+                                              ? AppColors.primary
+                                              : Colors.black.withAlpha(120),
+                                          border: Border.all(
+                                            color: item.isSelected
+                                                ? AppColors.primary
+                                                : Colors.white.withAlpha(200),
+                                            width: 1.5,
+                                          ),
                                         ),
+                                        child: item.isSelected
+                                            ? const Icon(
+                                                CupertinoIcons.checkmark,
+                                                size: 16,
+                                                color: CupertinoColors.white,
+                                              )
+                                            : null,
                                       ),
-                                      child: item.isSelected
-                                          ? const Icon(
-                                              CupertinoIcons.checkmark,
-                                              size: 16,
-                                              color: CupertinoColors.white,
-                                            )
-                                          : null,
                                     ),
                                   ),
                                 ),
@@ -339,13 +373,16 @@ class GalleryScreen extends ConsumerWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
-                  color: CupertinoColors.secondarySystemGroupedBackground
-                      .withAlpha(240),
+                  color: AppColors.cardBackground.withAlpha(240),
                   borderRadius: BorderRadius.circular(30),
+                  border: Border.all(
+                    color: AppColors.separator,
+                    width: 0.5,
+                  ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withAlpha(30),
-                      blurRadius: 15,
+                      color: Colors.black.withAlpha(80),
+                      blurRadius: 16,
                       offset: const Offset(0, 5),
                     ),
                   ],
@@ -355,25 +392,33 @@ class GalleryScreen extends ConsumerWidget {
                     // Pack ZIP button
                     Expanded(
                       child: CupertinoButton(
-                        color: CupertinoColors.systemGrey5,
+                        color: AppColors.secondaryCard,
+                        disabledColor: AppColors.secondaryCard.withAlpha(80),
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         borderRadius: BorderRadius.circular(22),
                         onPressed: currentPost.hasSelection
                             ? () => _startExport(context, ref, currentPost,
                                 ExportMode.zip)
                             : null,
-                        child: const Row(
+                        child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(CupertinoIcons.archivebox,
-                                size: 18, color: CupertinoColors.activeBlue),
-                            SizedBox(width: 6),
+                            Icon(
+                              CupertinoIcons.archivebox,
+                              size: 18,
+                              color: currentPost.hasSelection
+                                  ? AppColors.primary
+                                  : AppColors.textSecondary,
+                            ),
+                            const SizedBox(width: 6),
                             Text(
                               '打包为 ZIP',
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
-                                color: CupertinoColors.activeBlue,
+                                color: currentPost.hasSelection
+                                    ? AppColors.primary
+                                    : AppColors.textSecondary,
                               ),
                             ),
                           ],
@@ -383,25 +428,34 @@ class GalleryScreen extends ConsumerWidget {
                     const SizedBox(width: 12),
                     // Save to Photos button
                     Expanded(
-                      child: CupertinoButton.filled(
+                      child: CupertinoButton(
+                        color: AppColors.primary,
+                        disabledColor: AppColors.primary.withAlpha(60),
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         borderRadius: BorderRadius.circular(22),
                         onPressed: currentPost.hasSelection
                             ? () => _startExport(context, ref, currentPost,
                                 ExportMode.album)
                             : null,
-                        child: const Row(
+                        child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(CupertinoIcons.photo,
-                                size: 18, color: CupertinoColors.white),
-                            SizedBox(width: 6),
+                            Icon(
+                              CupertinoIcons.photo,
+                              size: 18,
+                              color: currentPost.hasSelection
+                                  ? CupertinoColors.white
+                                  : CupertinoColors.white.withAlpha(100),
+                            ),
+                            const SizedBox(width: 6),
                             Text(
                               '存入相册',
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
-                                color: CupertinoColors.white,
+                                color: currentPost.hasSelection
+                                    ? CupertinoColors.white
+                                    : CupertinoColors.white.withAlpha(100),
                               ),
                             ),
                           ],
@@ -424,13 +478,10 @@ class GalleryScreen extends ConsumerWidget {
     PostDetail post,
     ExportMode mode,
   ) {
-    // Show download bottom sheet
-    showModalBottomSheet(
+    // Show download bottom sheet with Cupertino modal popup
+    showCupertinoModalPopup(
       context: context,
-      isDismissible: false,
-      enableDrag: false,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      barrierDismissible: false,
       builder: (_) => const DownloadSheet(),
     );
 
