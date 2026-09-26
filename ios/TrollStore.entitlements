@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- 巨魔容器与标识 -->
+    <key>com.apple.private.security.container-required</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+
+    <!-- 1. 无限后台运行：彻底免除 iOS Watchdog 30s-3min 杀后台机制 -->
+    <key>com.apple.multitasking.unlimited</key>
+    <true/>
+    
+    <!-- 2. TCC 权限绕过：无需弹窗自动获取相册写入/通知等权限 -->
+    <key>com.apple.private.tcc.allow</key>
+    <array>
+        <string>kTCCServicePhotos</string>
+        <string>kTCCServiceMediaLibrary</string>
+    </array>
+
+    <!-- 3. 无沙盒限制：自由访问和保存至系统下载目录 -->
+    <key>com.apple.private.security.no-sandbox</key>
+    <true/>
+    
+    <!-- 4. 调试与基础特权 -->
+    <key>get-task-allow</key>
+    <true/>
+</dict>
+</plist>

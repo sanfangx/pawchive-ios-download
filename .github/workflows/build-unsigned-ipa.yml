@@ -1,0 +1,66 @@
+name: Build Unsigned iOS IPA (TrollStore)
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-ipa:
+    name: Build Unsigned IPA & TIPA
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run Dart Analyzer
+        run: flutter analyze
+
+      - name: Install ldid for TrollStore entitlements injection
+        run: |
+          brew install ldid || true
+
+      - name: Build iOS App (No Codesign)
+        run: |
+          flutter build ios --release --no-codesign
+
+      - name: Package Payload into IPA and TIPA
+        run: |
+          mkdir -p build/ios/ipa
+          APP_PATH="build/ios/iphoneos/Runner.app"
+          ENTITLEMENTS="ios/TrollStore.entitlements"
+
+          if command -v ldid &> /dev/null && [ -f "$ENTITLEMENTS" ]; then
+            echo "Injecting TrollStore entitlements with ldid..."
+            ldid -S"$ENTITLEMENTS" "$APP_PATH" || true
+          fi
+
+          cd build/ios/iphoneos
+          mkdir -p Payload
+          cp -r Runner.app Payload/
+          zip -qr PawchiveDownloader-unsigned.ipa Payload
+          cp PawchiveDownloader-unsigned.ipa PawchiveDownloader.tipa
+
+          mv PawchiveDownloader-unsigned.ipa ../ipa/
+          mv PawchiveDownloader.tipa ../ipa/
+          cd ../../..
+
+      - name: Upload IPA & TIPA Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pawchive-ios-unsigned-build
+          path: |
+            build/ios/ipa/PawchiveDownloader-unsigned.ipa
+            build/ios/ipa/PawchiveDownloader.tipa
+          retention-days: 14
