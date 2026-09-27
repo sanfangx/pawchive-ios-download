@@ -48,28 +48,13 @@ class DownloadSheet extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '下载任务管理',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      managerState.hasActiveTasks
-                          ? '${managerState.activeCount} 个任务下载中 · 可随时收起去下载其他帖子'
-                          : '共 ${tasks.length} 个任务记录',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  '下载任务管理',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
               ),
 
@@ -118,34 +103,7 @@ class DownloadSheet extends ConsumerWidget {
           ),
           const SizedBox(height: 12),
 
-          // 3. TrollStore Unlimited Background Privilege Banner
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withAlpha(30),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Row(
-              children: [
-                Icon(CupertinoIcons.bolt_fill,
-                    size: 15, color: AppColors.primary),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '巨魔无限后台保活中：可自由切后台、锁屏或继续下载其他帖子',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // 4. Scrollable Tasks List
+          // 3. Scrollable Tasks List
           Flexible(
             child: tasks.isEmpty
                 ? const Padding(
@@ -274,7 +232,7 @@ class DownloadSheet extends ConsumerWidget {
               ),
               const SizedBox(width: 8),
 
-              // Action button (Cancel / Share / Delete)
+              // Action button (Cancel / Share / Retry+Delete)
               if (task.isActive)
                 CupertinoButton(
                   padding:
@@ -321,11 +279,54 @@ class DownloadSheet extends ConsumerWidget {
                     ],
                   ),
                 )
+              // ⑧ 失败/取消任务：显示重试 + 删除两个按钮
+              else if (task.status == DownloadStatus.failed ||
+                  task.status == DownloadStatus.cancelled)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CupertinoButton(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      color: AppColors.primary.withAlpha(35),
+                      borderRadius: BorderRadius.circular(12),
+                      onPressed: () {
+                        ref
+                            .read(downloadTaskProvider.notifier)
+                            .retryTask(task.id);
+                      },
+                      child: const Text(
+                        '重试',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: () {
+                        ref
+                            .read(downloadTaskProvider.notifier)
+                            .removeTask(task.id);
+                      },
+                      child: const Icon(
+                        CupertinoIcons.trash,
+                        size: 16,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                )
               else
                 CupertinoButton(
                   padding: EdgeInsets.zero,
                   onPressed: () {
-                    ref.read(downloadTaskProvider.notifier).removeTask(task.id);
+                    ref
+                        .read(downloadTaskProvider.notifier)
+                        .removeTask(task.id);
                   },
                   child: const Icon(
                     CupertinoIcons.trash,
@@ -339,19 +340,26 @@ class DownloadSheet extends ConsumerWidget {
           // Progress bar & detail line
           if (task.isActive) ...[
             const SizedBox(height: 10),
+            // ⑦ 进度条平滑动画（TweenAnimationBuilder）
             ClipRRect(
               borderRadius: BorderRadius.circular(3),
               child: Container(
                 height: 6,
                 color: AppColors.cardBackground,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: FractionallySizedBox(
-                    widthFactor: task.status == DownloadStatus.queued
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(
+                    begin: 0.0,
+                    end: task.status == DownloadStatus.queued
                         ? 0.0
                         : task.progress.clamp(0.02, 1.0),
-                    child: Container(
-                      color: AppColors.primary,
+                  ),
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOut,
+                  builder: (ctx, value, child) => Align(
+                    alignment: Alignment.centerLeft,
+                    child: FractionallySizedBox(
+                      widthFactor: value,
+                      child: Container(color: AppColors.primary),
                     ),
                   ),
                 ),
@@ -425,21 +433,21 @@ class DownloadSheet extends ConsumerWidget {
   String _getTaskStatusSubtitle(DownloadTask task) {
     switch (task.status) {
       case DownloadStatus.queued:
-        return '排队等待中 · 共 ${task.totalCount} 项';
+        return '等待中 · ${task.totalCount} 项';
       case DownloadStatus.downloading:
-        return '正在下载 ${task.completedCount}/${task.totalCount} 项 (${(task.progress * 100).toStringAsFixed(0)}%)';
+        return '${task.completedCount}/${task.totalCount} 项 (${(task.progress * 100).toStringAsFixed(0)}%)';
       case DownloadStatus.savingToAlbum:
-        return '正在保存至相册专属相簿...';
+        return '正在保存至相册...';
       case DownloadStatus.packingZip:
-        return '正在打包 ZIP 归档...';
+        return '正在打包 ZIP...';
       case DownloadStatus.completed:
         return task.exportMode == ExportMode.zip
-            ? '已保存至 Documents (${task.completedCount} 项)'
-            : '已保存至专属系统相簿 (${task.completedCount} 项)';
+            ? '已保存至 Documents · ${task.completedCount} 项'
+            : '已存入相册 · ${task.completedCount} 项';
       case DownloadStatus.failed:
-        return task.errorMessage ?? '部分文件下载失败';
+        return task.errorMessage ?? '下载失败';
       case DownloadStatus.cancelled:
-        return '任务已取消';
+        return '已取消';
     }
   }
 }

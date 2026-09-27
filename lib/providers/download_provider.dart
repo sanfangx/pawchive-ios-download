@@ -81,6 +81,23 @@ class DownloadTaskNotifier extends StateNotifier<DownloadManagerState> {
     );
   }
 
+  /// Retry a failed or cancelled task by resetting its state and re-queuing
+  void retryTask(String taskId) {
+    _updateTask(
+      taskId,
+      (t) => t.copyWith(
+        status: DownloadStatus.queued,
+        progress: 0.0,
+        completedCount: 0,
+        currentSpeed: '',
+        currentFileName: '',
+        clearErrorMessage: true,
+        clearResultPath: true,
+      ),
+    );
+    _processQueue();
+  }
+
   void _updateTask(
       String taskId, DownloadTask Function(DownloadTask) updater) {
     state = state.copyWith(

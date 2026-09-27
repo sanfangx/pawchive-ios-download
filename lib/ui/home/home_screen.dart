@@ -28,12 +28,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.dispose();
   }
 
+  // ① 粘贴后若能识别链接则直接解析，无需再点按钮
   Future<void> _pasteFromClipboard() async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     if (data?.text != null && data!.text!.isNotEmpty) {
+      final text = data.text!.trim();
       setState(() {
-        _urlController.text = data.text!.trim();
+        _urlController.text = text;
       });
+      HapticFeedback.selectionClick();
+      if (UrlParser.parse(text) != null) {
+        _parseAndNavigate(text);
+      }
     }
   }
 
@@ -97,353 +103,371 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       child: Stack(
         children: [
           CustomScrollView(
-        slivers: [
-          // iOS Large Title Navigation Bar
-          CupertinoSliverNavigationBar(
-            largeTitle: const Text('Pawchive'),
-            backgroundColor: AppColors.barBackground,
-            border: null,
-            trailing: CupertinoButton(
-              padding: EdgeInsets.zero,
-              child: const Icon(CupertinoIcons.gear,
-                  color: AppColors.primary, size: 24),
-              onPressed: () {
-                Navigator.of(context).push(
-                  CupertinoPageRoute(builder: (_) => const SettingsScreen()),
-                );
-              },
-            ),
-          ),
-
-          // Main input card
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Container(
-                padding: const EdgeInsets.all(16.0),
-                decoration: BoxDecoration(
-                  color: AppColors.cardBackground,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(40),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+            slivers: [
+              // iOS Large Title Navigation Bar
+              CupertinoSliverNavigationBar(
+                largeTitle: const Text('Pawchive'),
+                backgroundColor: AppColors.barBackground,
+                border: null,
+                trailing: CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  child: const Icon(CupertinoIcons.gear,
+                      color: AppColors.primary, size: 24),
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      CupertinoPageRoute(builder: (_) => const SettingsScreen()),
+                    );
+                  },
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      '提取帖子媒体',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      '输入帖子链接，自动解析提取高清原图与视频',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
+              ),
 
-                    // Input field with paste button
-                    Row(
-                      children: [
-                        Expanded(
-                          child: CupertinoTextField(
-                            controller: _urlController,
-                            placeholder: '粘贴 pawchive.pw 帖子链接',
-                            style: const TextStyle(
-                              color: AppColors.textPrimary,
-                              fontSize: 14,
-                            ),
-                            placeholderStyle: const TextStyle(
-                              color: AppColors.textSecondary,
-                              fontSize: 14,
-                            ),
-                            cursorColor: AppColors.primary,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 12,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.secondaryCard,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            clearButtonMode: OverlayVisibilityMode.editing,
-                            keyboardType: TextInputType.url,
-                            textInputAction: TextInputAction.go,
-                            onSubmitted: (val) {
-                              if (val.isNotEmpty) _parseAndNavigate(val);
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        CupertinoButton(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 11,
-                          ),
-                          color: AppColors.secondaryCard,
-                          borderRadius: BorderRadius.circular(10),
-                          onPressed: _pasteFromClipboard,
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(CupertinoIcons.doc_on_clipboard,
-                                  size: 16, color: AppColors.primary),
-                              SizedBox(width: 4),
-                              Text(
-                                '粘贴',
-                                style: TextStyle(
-                                  color: AppColors.primary,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
+              // Main input card
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Container(
+                    padding: const EdgeInsets.all(16.0),
+                    decoration: BoxDecoration(
+                      color: AppColors.cardBackground,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withAlpha(40),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          '提取帖子媒体',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
 
-                    // Parse Action Button
-                    CupertinoButton.filled(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      borderRadius: BorderRadius.circular(12),
-                      onPressed: _isLoading
-                          ? null
-                          : () {
-                              if (_urlController.text.trim().isNotEmpty) {
-                                _parseAndNavigate(_urlController.text.trim());
-                              } else {
-                                showCupertinoToast(
-                                  context,
-                                  '请先输入或粘贴帖子链接',
-                                  isError: true,
-                                );
-                              }
-                            },
-                      child: _isLoading
-                          ? const CupertinoActivityIndicator(
-                              color: CupertinoColors.white)
-                          : const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(CupertinoIcons.arrow_right_circle_fill,
-                                    size: 18),
-                                SizedBox(width: 8),
-                                Text(
-                                  '解析帖子媒体',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                        // Input field with paste button
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CupertinoTextField(
+                                controller: _urlController,
+                                placeholder: '粘贴 pawchive.pw 帖子链接',
+                                style: const TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 14,
                                 ),
-                              ],
+                                placeholderStyle: const TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 14,
+                                ),
+                                cursorColor: AppColors.primary,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 12,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.secondaryCard,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                clearButtonMode: OverlayVisibilityMode.editing,
+                                keyboardType: TextInputType.url,
+                                textInputAction: TextInputAction.go,
+                                onSubmitted: (val) {
+                                  if (val.isNotEmpty) _parseAndNavigate(val);
+                                },
+                              ),
                             ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+                            const SizedBox(width: 8),
+                            CupertinoButton(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 11,
+                              ),
+                              color: AppColors.secondaryCard,
+                              borderRadius: BorderRadius.circular(10),
+                              onPressed: _pasteFromClipboard,
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(CupertinoIcons.doc_on_clipboard,
+                                      size: 16, color: AppColors.primary),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    '粘贴',
+                                    style: TextStyle(
+                                      color: AppColors.primary,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
 
-          // History Section Header
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 8,
-                bottom: 8,
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    '历史记录',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
+                        // Parse Action Button
+                        CupertinoButton.filled(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          borderRadius: BorderRadius.circular(12),
+                          onPressed: _isLoading
+                              ? null
+                              : () {
+                                  if (_urlController.text.trim().isNotEmpty) {
+                                    _parseAndNavigate(_urlController.text.trim());
+                                  } else {
+                                    showCupertinoToast(
+                                      context,
+                                      '请先输入或粘贴帖子链接',
+                                      isError: true,
+                                    );
+                                  }
+                                },
+                          child: _isLoading
+                              ? const CupertinoActivityIndicator(
+                                  color: CupertinoColors.white)
+                              : const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(CupertinoIcons.arrow_right_circle_fill,
+                                        size: 18),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      '解析帖子媒体',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                        ),
+                      ],
                     ),
                   ),
-                  if (historyList.isNotEmpty)
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      onPressed: () {
-                        showCupertinoDialog(
-                          context: context,
-                          builder: (ctx) => CupertinoAlertDialog(
-                            title: const Text('清空历史记录'),
-                            content: const Text('确定要清空所有解析历史记录吗？'),
-                            actions: [
-                              CupertinoDialogAction(
-                                child: const Text('取消'),
-                                onPressed: () => Navigator.of(ctx).pop(),
-                              ),
-                              CupertinoDialogAction(
-                                isDestructiveAction: true,
-                                onPressed: () {
-                                  ref
-                                      .read(historyProvider.notifier)
-                                      .clearAll();
-                                  Navigator.of(ctx).pop();
-                                },
-                                child: const Text('清空'),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                      child: const Text(
-                        '清空',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                ],
+                ),
               ),
-            ),
-          ),
 
-          // History Cards List
-          if (historyList.isEmpty)
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 40),
-                child: Center(
-                  child: Column(
+              // History Section Header
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(
+                    left: 20,
+                    right: 20,
+                    top: 8,
+                    bottom: 8,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Icon(
-                        CupertinoIcons.clock,
-                        size: 48,
-                        color: AppColors.secondaryCard,
-                      ),
-                      SizedBox(height: 12),
-                      Text(
-                        '暂无解析历史记录',
+                      const Text(
+                        '历史记录',
                         style: TextStyle(
-                          fontSize: 14,
-                          color: AppColors.textSecondary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
                         ),
                       ),
+                      if (historyList.isNotEmpty)
+                        CupertinoButton(
+                          padding: EdgeInsets.zero,
+                          onPressed: () {
+                            showCupertinoDialog(
+                              context: context,
+                              builder: (ctx) => CupertinoAlertDialog(
+                                title: const Text('清空历史记录'),
+                                content: const Text('确定要清空所有解析历史记录吗？'),
+                                actions: [
+                                  CupertinoDialogAction(
+                                    child: const Text('取消'),
+                                    onPressed: () => Navigator.of(ctx).pop(),
+                                  ),
+                                  CupertinoDialogAction(
+                                    isDestructiveAction: true,
+                                    onPressed: () {
+                                      ref
+                                          .read(historyProvider.notifier)
+                                          .clearAll();
+                                      Navigator.of(ctx).pop();
+                                    },
+                                    child: const Text('清空'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                          child: const Text(
+                            '清空',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
               ),
-            )
-          else
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final item = historyList[index];
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
-                        color: AppColors.cardBackground,
-                        borderRadius: BorderRadius.circular(14),
+
+              // History Cards List
+              if (historyList.isEmpty)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 40),
+                    child: Center(
+                      child: Column(
+                        children: [
+                          Icon(
+                            CupertinoIcons.clock,
+                            size: 48,
+                            color: AppColors.secondaryCard,
+                          ),
+                          SizedBox(height: 12),
+                          Text(
+                            '暂无解析历史记录',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
                       ),
-                      child: CupertinoListTile(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        leadingSize: 50,
-                        leading: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: CachedNetworkImage(
-                            imageUrl: item.coverUrl,
-                            width: 50,
-                            height: 50,
-                            fit: BoxFit.cover,
-                            placeholder: (context, _) => Container(
-                              color: AppColors.secondaryCard,
-                              child: const CupertinoActivityIndicator(),
+                    ),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final item = historyList[index];
+                        // ② 左滑删除单条历史记录
+                        return Dismissible(
+                          key: Key(item.url),
+                          direction: DismissDirection.endToStart,
+                          background: Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            decoration: BoxDecoration(
+                              color: AppColors.destructive,
+                              borderRadius: BorderRadius.circular(14),
                             ),
-                            errorWidget: (context, url, error) => Container(
-                              color: AppColors.secondaryCard,
-                              child: const Icon(CupertinoIcons.photo,
-                                  color: AppColors.textSecondary),
+                            child: const Icon(
+                              CupertinoIcons.delete,
+                              color: CupertinoColors.white,
+                              size: 22,
                             ),
                           ),
-                        ),
-                        title: Text(
-                          item.title,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 4.0),
-                          child: Row(
-                            children: [
-                              Text(
-                                item.authorName,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.textSecondary,
-                                ),
+                          onDismissed: (_) {
+                            HapticFeedback.lightImpact();
+                            ref
+                                .read(historyProvider.notifier)
+                                .deleteHistory(item.url);
+                          },
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            decoration: BoxDecoration(
+                              color: AppColors.cardBackground,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: CupertinoListTile(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 10,
                               ),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary.withAlpha(35),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  '${item.mediaCount} 项',
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.primary,
+                              // ③ 缩略图从 50 增大到 60
+                              leadingSize: 60,
+                              leading: ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: CachedNetworkImage(
+                                  imageUrl: item.coverUrl,
+                                  width: 60,
+                                  height: 60,
+                                  fit: BoxFit.cover,
+                                  placeholder: (context, _) => Container(
+                                    color: AppColors.secondaryCard,
+                                    child: const CupertinoActivityIndicator(),
+                                  ),
+                                  errorWidget: (context, url, error) => Container(
+                                    color: AppColors.secondaryCard,
+                                    child: const Icon(CupertinoIcons.photo,
+                                        color: AppColors.textSecondary),
                                   ),
                                 ),
                               ),
-                            ],
+                              title: Text(
+                                item.title,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Padding(
+                                padding: const EdgeInsets.only(top: 4.0),
+                                child: Row(
+                                  children: [
+                                    Text(
+                                      item.authorName,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary.withAlpha(35),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        '${item.mediaCount} 项',
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.primary,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              trailing: const Icon(
+                                CupertinoIcons.forward,
+                                size: 16,
+                                color: AppColors.textSecondary,
+                              ),
+                              onTap: () {
+                                _urlController.text = item.url;
+                                _parseAndNavigate(item.url);
+                              },
+                            ),
                           ),
-                        ),
-                        trailing: const Icon(
-                          CupertinoIcons.forward,
-                          size: 16,
-                          color: AppColors.textSecondary,
-                        ),
-                        onTap: () {
-                          _urlController.text = item.url;
-                          _parseAndNavigate(item.url);
-                        },
-                      ),
-                    );
-                  },
-                  childCount: historyList.length,
+                        );
+                      },
+                      childCount: historyList.length,
+                    ),
+                  ),
                 ),
-              ),
-            ),
 
-          const SliverToBoxAdapter(
-            child: SizedBox(height: 90),
+              const SliverToBoxAdapter(
+                child: SizedBox(height: 90),
+              ),
+            ],
           ),
-        ],
-      ),
           Positioned(
             left: 16,
             right: 16,

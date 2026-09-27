@@ -36,6 +36,36 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
     super.dispose();
   }
 
+  // ⑩ 长按弹出操作菜单
+  void _showLongPressMenu(BuildContext context, MediaItem item) {
+    showCupertinoModalPopup<void>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              Share.shareUri(Uri.parse(item.downloadUrl));
+            },
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(CupertinoIcons.share, size: 18),
+                SizedBox(width: 8),
+                Text('分享原图链接'),
+              ],
+            ),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: const Text('取消'),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentItem = widget.items[_currentIndex];
@@ -51,6 +81,8 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
                 _showBars = !_showBars;
               });
             },
+            // ⑩ 长按弹出 ActionSheet
+            onLongPress: () => _showLongPressMenu(context, currentItem),
             child: PageView.builder(
               controller: _pageController,
               itemCount: widget.items.length,
@@ -98,66 +130,72 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
             ),
           ),
 
-          // 2. Top Bar
-          if (_showBars)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                padding: EdgeInsets.only(
-                  top: MediaQuery.of(context).padding.top + 8,
-                  bottom: 12,
-                  left: 16,
-                  right: 16,
-                ),
-                color: Colors.black.withAlpha(150),
-                child: Row(
-                  children: [
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      child: const Icon(CupertinoIcons.back,
-                          color: CupertinoColors.white, size: 28),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            currentItem.name,
-                            style: const TextStyle(
-                              color: CupertinoColors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          Text(
-                            '${_currentIndex + 1} / ${widget.items.length}',
-                            style: const TextStyle(
-                              color: CupertinoColors.systemGrey,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
+          // 2. Top Bar with animated fade (⑪)
+          AnimatedOpacity(
+            opacity: _showBars ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 220),
+            child: IgnorePointer(
+              ignoring: !_showBars,
+              child: Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  padding: EdgeInsets.only(
+                    top: MediaQuery.of(context).padding.top + 8,
+                    bottom: 12,
+                    left: 16,
+                    right: 16,
+                  ),
+                  color: Colors.black.withAlpha(150),
+                  child: Row(
+                    children: [
+                      CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        child: const Icon(CupertinoIcons.back,
+                            color: CupertinoColors.white, size: 28),
+                        onPressed: () => Navigator.of(context).pop(),
                       ),
-                    ),
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      child: const Icon(CupertinoIcons.share,
-                          color: CupertinoColors.white, size: 24),
-                      onPressed: () {
-                        Share.shareUri(Uri.parse(currentItem.downloadUrl));
-                      },
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              currentItem.name,
+                              style: const TextStyle(
+                                color: CupertinoColors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              '${_currentIndex + 1} / ${widget.items.length}',
+                              style: const TextStyle(
+                                color: CupertinoColors.systemGrey,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        child: const Icon(CupertinoIcons.share,
+                            color: CupertinoColors.white, size: 24),
+                        onPressed: () {
+                          Share.shareUri(Uri.parse(currentItem.downloadUrl));
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
+          ),
         ],
       ),
     );
