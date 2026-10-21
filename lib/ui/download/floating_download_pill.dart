@@ -183,28 +183,28 @@ class FloatingDownloadPill extends ConsumerWidget {
   String _getTitle(DownloadManagerState state, DownloadTask? primary) {
     if (state.hasActiveTasks) {
       if (state.activeCount > 1) {
-        return '${state.activeCount} 个下载任务进行中';
+        return '${state.activeCount} 个任务下载中';
       }
-      return primary?.postTitle ?? '正在下载媒体...';
+      return primary?.postTitle ?? '正在下载...';
     }
-    return primary != null ? '已完成: ${primary.postTitle}' : '所有任务均已导出完成';
+    return primary != null ? primary.postTitle : '导出完成';
   }
 
   String _getSubtitle(DownloadManagerState state, DownloadTask? primary) {
     if (state.hasActiveTasks) {
       if (primary != null) {
-        final modeStr = primary.exportMode == ExportMode.zip ? 'ZIP 归档' : '相册保存';
+        final modeStr = primary.exportMode == ExportMode.zip ? 'ZIP' : '相册';
         if (primary.status == DownloadStatus.queued) {
-          return '排队等待中 · 共 ${primary.totalCount} 项 ($modeStr)';
+          return '等待中 · ${primary.totalCount} 项 · $modeStr';
         } else if (primary.status == DownloadStatus.savingToAlbum) {
-          return '正在写入系统相册... (${primary.completedCount}/${primary.totalCount})';
+          return '存入相册 ${primary.completedCount}/${primary.totalCount}';
         } else if (primary.status == DownloadStatus.packingZip) {
-          return '正在打包 ZIP... (${primary.completedCount}/${primary.totalCount})';
+          return '打包 ZIP ${primary.completedCount}/${primary.totalCount}';
         }
-        return '已完成 ${primary.completedCount} / ${primary.totalCount} 项 (${(primary.progress * 100).toStringAsFixed(0)}%) · $modeStr';
+        return '${primary.completedCount}/${primary.totalCount} · $modeStr';
       }
-      return '后台下载中，点击查看详情';
+      return '下载中';
     }
-    return '已保存完成，点击查看或分享文件';
+    return '已完成，点击查看';
   }
 }

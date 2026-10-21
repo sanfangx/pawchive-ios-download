@@ -1,6 +1,8 @@
+import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/download_task.dart';
 import '../../models/post_detail.dart';
@@ -191,6 +193,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
                         CupertinoButton(
                           padding: const EdgeInsets.symmetric(vertical: 4),
                           onPressed: () {
+                            HapticFeedback.selectionClick();
                             ref
                                 .read(postDetailProvider.notifier)
                                 .selectAll(!currentPost.isAllSelected);
@@ -289,7 +292,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
                                         borderRadius:
                                             BorderRadius.circular(4),
                                       ),
-                                      child: const Row(
+                                       child: const Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           Icon(
@@ -302,8 +305,9 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
                                             'VIDEO',
                                             style: TextStyle(
                                               color: CupertinoColors.white,
-                                              fontSize: 9,
+                                              fontSize: 10,
                                               fontWeight: FontWeight.bold,
+                                              letterSpacing: 0.5,
                                             ),
                                           ),
                                         ],
@@ -374,104 +378,110 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
               child: const FloatingDownloadPill(),
             ),
 
-            // 5. Floating Action Capsule at bottom
+            // 5. Floating Action Capsule at bottom (frosted glass)
             Positioned(
               left: 16,
               right: 16,
               bottom: MediaQuery.of(context).padding.bottom + 12,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: AppColors.cardBackground.withAlpha(240),
-                  borderRadius: BorderRadius.circular(30),
-                  border: Border.all(
-                    color: AppColors.separator,
-                    width: 0.5,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(30),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.cardBackground.withAlpha(190),
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(
+                        color: AppColors.separator,
+                        width: 0.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withAlpha(80),
+                          blurRadius: 16,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        // Pack ZIP button
+                        Expanded(
+                          child: CupertinoButton(
+                            color: AppColors.secondaryCard,
+                            disabledColor: AppColors.secondaryCard.withAlpha(80),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            borderRadius: BorderRadius.circular(22),
+                            onPressed: currentPost.hasSelection
+                                ? () => _startExport(context, ref, currentPost,
+                                    ExportMode.zip)
+                                : null,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  CupertinoIcons.archivebox,
+                                  size: 18,
+                                  color: currentPost.hasSelection
+                                      ? AppColors.primary
+                                      : AppColors.textSecondary,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '打包为 ZIP',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: currentPost.hasSelection
+                                        ? AppColors.primary
+                                        : AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Save to Photos button
+                        Expanded(
+                          child: CupertinoButton(
+                            color: AppColors.primary,
+                            disabledColor: AppColors.primary.withAlpha(60),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            borderRadius: BorderRadius.circular(22),
+                            onPressed: currentPost.hasSelection
+                                ? () => _startExport(context, ref, currentPost,
+                                    ExportMode.album)
+                                : null,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  CupertinoIcons.photo,
+                                  size: 18,
+                                  color: currentPost.hasSelection
+                                      ? CupertinoColors.white
+                                      : CupertinoColors.white.withAlpha(100),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '存入相册',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: currentPost.hasSelection
+                                        ? CupertinoColors.white
+                                        : CupertinoColors.white.withAlpha(100),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(80),
-                      blurRadius: 16,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    // Pack ZIP button
-                    Expanded(
-                      child: CupertinoButton(
-                        color: AppColors.secondaryCard,
-                        disabledColor: AppColors.secondaryCard.withAlpha(80),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        borderRadius: BorderRadius.circular(22),
-                        onPressed: currentPost.hasSelection
-                            ? () => _startExport(context, ref, currentPost,
-                                ExportMode.zip)
-                            : null,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              CupertinoIcons.archivebox,
-                              size: 18,
-                              color: currentPost.hasSelection
-                                  ? AppColors.primary
-                                  : AppColors.textSecondary,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              '打包为 ZIP',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: currentPost.hasSelection
-                                    ? AppColors.primary
-                                    : AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    // Save to Photos button
-                    Expanded(
-                      child: CupertinoButton(
-                        color: AppColors.primary,
-                        disabledColor: AppColors.primary.withAlpha(60),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        borderRadius: BorderRadius.circular(22),
-                        onPressed: currentPost.hasSelection
-                            ? () => _startExport(context, ref, currentPost,
-                                ExportMode.album)
-                            : null,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              CupertinoIcons.photo,
-                              size: 18,
-                              color: currentPost.hasSelection
-                                  ? CupertinoColors.white
-                                  : CupertinoColors.white.withAlpha(100),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              '存入相册',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: currentPost.hasSelection
-                                    ? CupertinoColors.white
-                                    : CupertinoColors.white.withAlpha(100),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
               ),
             ),

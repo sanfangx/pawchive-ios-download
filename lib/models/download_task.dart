@@ -73,6 +73,8 @@ class DownloadTask {
     String? currentFileName,
     String? errorMessage,
     String? resultPath,
+    bool clearErrorMessage = false,
+    bool clearResultPath = false,
   }) {
     return DownloadTask(
       id: id,
@@ -87,8 +89,8 @@ class DownloadTask {
       progress: progress ?? this.progress,
       currentSpeed: currentSpeed ?? this.currentSpeed,
       currentFileName: currentFileName ?? this.currentFileName,
-      errorMessage: errorMessage ?? this.errorMessage,
-      resultPath: resultPath ?? this.resultPath,
+      errorMessage: clearErrorMessage ? null : (errorMessage ?? this.errorMessage),
+      resultPath: clearResultPath ? null : (resultPath ?? this.resultPath),
       createdAt: createdAt,
     );
   }

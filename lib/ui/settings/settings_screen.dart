@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../providers/settings_provider.dart';
@@ -16,12 +17,23 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _cacheSizeStr = '计算中...';
+  String _versionStr = '读取中...';
   List<FileSystemEntity> _zipFiles = [];
 
   @override
   void initState() {
     super.initState();
     _refreshStorageInfo();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() {
+        _versionStr = 'v${info.version}+${info.buildNumber} (TrollStore Build)';
+      });
+    }
   }
 
   Future<void> _refreshStorageInfo() async {
@@ -100,8 +112,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 const CupertinoListTile(
                   title: Text('大文件智能断点续传',
                       style: TextStyle(color: AppColors.textPrimary)),
-                  subtitle: Text('支持 HTTP Range 206 协议，断网自动续传',
-                      style: TextStyle(color: AppColors.textSecondary)),
                   trailing: Icon(CupertinoIcons.checkmark_alt,
                       color: AppColors.success),
                 ),
@@ -120,8 +130,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 CupertinoListTile(
                   title: const Text('创建独立专属相簿',
                       style: TextStyle(color: AppColors.textPrimary)),
-                  subtitle: const Text('以 [Pawchive] 作者 - 标题 归档管理',
-                      style: TextStyle(color: AppColors.textSecondary)),
                   trailing: CupertinoSwitch(
                     activeTrackColor: AppColors.primary,
                     value: settings.customAlbum,
@@ -131,8 +139,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 CupertinoListTile(
                   title: const Text('存入相册后清理临时缓存',
                       style: TextStyle(color: AppColors.textPrimary)),
-                  subtitle: const Text('避免原图占用沙盒与相册双倍存储空间',
-                      style: TextStyle(color: AppColors.textSecondary)),
                   trailing: CupertinoSwitch(
                     activeTrackColor: AppColors.primary,
                     value: settings.cleanCacheAfterAlbumSave,
@@ -142,8 +148,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ],
             ),
 
-            // Group 3: 巨魔特权与后台
-            _buildSectionHeader('巨魔 (TrollStore) 特权与后台'),
+            // Group 3: 后台与通知
+            _buildSectionHeader('后台与通知'),
             CupertinoListSection.insetGrouped(
               backgroundColor: AppColors.background,
               decoration: BoxDecoration(
@@ -154,10 +160,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 CupertinoListTile(
                   leading: const Icon(CupertinoIcons.bolt_fill,
                       color: AppColors.primary),
-                  title: const Text('无限后台保活 (Unlimited)',
+                  title: const Text('无限后台保活',
                       style: TextStyle(color: AppColors.textPrimary)),
-                  subtitle: const Text('解除 iOS Watchdog 限制，切后台及锁屏不中断',
-                      style: TextStyle(color: AppColors.textSecondary)),
                   trailing: CupertinoSwitch(
                     activeTrackColor: AppColors.primary,
                     value: settings.trollStoreKeepAlive,
@@ -167,7 +171,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 CupertinoListTile(
                   leading: const Icon(CupertinoIcons.bell_fill,
                       color: CupertinoColors.systemIndigo),
-                  title: const Text('任务完成系统横幅通知',
+                  title: const Text('任务完成通知',
                       style: TextStyle(color: AppColors.textPrimary)),
                   trailing: CupertinoSwitch(
                     activeTrackColor: AppColors.primary,
@@ -178,7 +182,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 CupertinoListTile(
                   leading: const Icon(CupertinoIcons.waveform,
                       color: CupertinoColors.systemTeal),
-                  title: const Text('完成触感震动反馈',
+                  title: const Text('完成触感震动',
                       style: TextStyle(color: AppColors.textPrimary)),
                   trailing: CupertinoSwitch(
                     activeTrackColor: AppColors.primary,
@@ -189,8 +193,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ],
             ),
 
-            // Group 4: ZIP 文件归档 (Documents)
-            _buildSectionHeader('ZIP 归档管理 (Documents 目录)'),
+            // Group 4: ZIP 归档
+            _buildSectionHeader('ZIP 归档'),
             CupertinoListSection.insetGrouped(
               backgroundColor: AppColors.background,
               decoration: BoxDecoration(
@@ -199,10 +203,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               children: [
                 CupertinoListTile(
-                  title: const Text('已归档 ZIP 包数量',
+                  title: const Text('ZIP 数量',
                       style: TextStyle(color: AppColors.textPrimary)),
                   additionalInfo: Text(
-                    '${_zipFiles.length} 个压缩包',
+                    '${_zipFiles.length} 个',
                     style: const TextStyle(color: AppColors.textSecondary),
                   ),
                 ),
@@ -228,14 +232,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   })
                 else
                   const CupertinoListTile(
-                    title: Text('暂无已导出的 ZIP 文件',
+                    title: Text('暂无 ZIP 文件',
                         style: TextStyle(color: AppColors.textSecondary)),
                   ),
               ],
             ),
 
-            // Group 5: 存储与缓存
-            _buildSectionHeader('存储空间与缓存'),
+            // Group 5: 缓存
+            _buildSectionHeader('缓存'),
             CupertinoListSection.insetGrouped(
               backgroundColor: AppColors.background,
               decoration: BoxDecoration(
@@ -244,7 +248,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               children: [
                 CupertinoListTile(
-                  title: const Text('临时下载与缩略图缓存',
+                  title: const Text('缓存占用',
                       style: TextStyle(color: AppColors.textPrimary)),
                   additionalInfo: Text(
                     _cacheSizeStr,
@@ -253,7 +257,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 CupertinoListTile(
                   title: const Text(
-                    '清空临时缓存',
+                    '清空缓存',
                     style: TextStyle(color: AppColors.destructive),
                   ),
                   trailing: const Icon(CupertinoIcons.delete,
@@ -262,7 +266,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     await StorageService.clearTempCache();
                     await _refreshStorageInfo();
                     if (context.mounted) {
-                      showCupertinoToast(context, '临时缓存已全部清理完毕');
+                      showCupertinoToast(context, '缓存已清理完毕');
                     }
                   },
                 ),
@@ -277,18 +281,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 color: AppColors.cardBackground,
                 borderRadius: BorderRadius.circular(12),
               ),
-              children: const [
+              children: [
                 CupertinoListTile(
-                  title: Text('应用版本',
+                  title: const Text('应用版本',
                       style: TextStyle(color: AppColors.textPrimary)),
-                  additionalInfo: Text('v1.0.0 (TrollStore Build)',
-                      style: TextStyle(color: AppColors.textSecondary)),
-                ),
-                CupertinoListTile(
-                  title: Text('核心设计',
-                      style: TextStyle(color: AppColors.textPrimary)),
-                  additionalInfo: Text('Pawchive 高清原图提取',
-                      style: TextStyle(color: AppColors.textSecondary)),
+                  additionalInfo: Text(_versionStr,
+                      style: const TextStyle(color: AppColors.textSecondary)),
                 ),
               ],
             ),
