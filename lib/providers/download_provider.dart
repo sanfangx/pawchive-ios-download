@@ -188,15 +188,8 @@ class DownloadTaskNotifier extends StateNotifier<DownloadManagerState> {
           (t) => t.copyWith(status: DownloadStatus.savingToAlbum),
         );
 
-        final albumName = AlbumService.formatAlbumName(
-          prefix: settings.albumNamePrefix,
-          author: task.authorName,
-          title: task.postTitle,
-        );
-
         final savedCount = await AlbumService.saveToAlbum(
           items: successDownloaded,
-          albumName: albumName,
           cleanCacheAfterSave: settings.cleanCacheAfterAlbumSave,
         );
 

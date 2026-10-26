@@ -1,11 +1,14 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pawchive_download/models/app_settings.dart';
 import 'package:pawchive_download/models/download_task.dart';
 import 'package:pawchive_download/models/media_item.dart';
 import 'package:pawchive_download/models/post_detail.dart';
 import 'package:pawchive_download/providers/download_provider.dart';
 import 'package:pawchive_download/providers/post_provider.dart';
 import 'package:pawchive_download/services/url_parser.dart';
+import 'package:pawchive_download/ui/gallery/image_viewer_screen.dart';
 
 void main() {
   group('UrlParser Tests', () {
@@ -254,6 +257,41 @@ void main() {
 
       final state = container.read(downloadTaskProvider);
       expect(state.tasks.where((t) => t.id == completedTask.id), isEmpty);
+    });
+
+    testWidgets('ImageViewerScreen renders without errors', (tester) async {
+      await tester.pumpWidget(
+        const CupertinoApp(
+          home: ImageViewerScreen(
+            items: [
+              MediaItem(
+                id: '1',
+                name: '1.jpg',
+                path: '/1.jpg',
+                downloadUrl: 'https://example.com/1.jpg',
+                thumbnailUrl: 'https://example.com/thumb.jpg',
+                isVideo: false,
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+    });
+
+    test('AppSettings serialization does not include customAlbum or albumNamePrefix', () {
+      const settings = AppSettings(
+        concurrency: 5,
+        cleanCacheAfterAlbumSave: false,
+      );
+      final map = settings.toMap();
+      expect(map.containsKey('customAlbum'), isFalse);
+      expect(map.containsKey('albumNamePrefix'), isFalse);
+
+      final restored = AppSettings.fromMap(map);
+      expect(restored.concurrency, equals(5));
+      expect(restored.cleanCacheAfterAlbumSave, isFalse);
     });
   });
 }

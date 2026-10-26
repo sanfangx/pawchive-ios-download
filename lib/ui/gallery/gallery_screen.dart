@@ -245,11 +245,27 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
                                   .toList();
                               final imgIdx = imageItems.indexOf(item);
                               Navigator.of(context).push(
-                                CupertinoPageRoute(
-                                  builder: (_) => ImageViewerScreen(
+                                PageRouteBuilder(
+                                  opaque: false,
+                                  barrierColor: CupertinoColors.black,
+                                  transitionDuration:
+                                      const Duration(milliseconds: 200),
+                                  reverseTransitionDuration:
+                                      const Duration(milliseconds: 200),
+                                  pageBuilder: (context, animation,
+                                          secondaryAnimation) =>
+                                      ImageViewerScreen(
                                     items: imageItems,
-                                    initialIndex: imgIdx >= 0 ? imgIdx : 0,
+                                    initialIndex:
+                                        imgIdx >= 0 ? imgIdx : 0,
                                   ),
+                                  transitionsBuilder: (context, animation,
+                                      secondaryAnimation, child) {
+                                    return FadeTransition(
+                                      opacity: animation,
+                                      child: child,
+                                    );
+                                  },
                                 ),
                               );
                             }
@@ -263,6 +279,8 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
                                 CachedNetworkImage(
                                   imageUrl: item.thumbnailUrl,
                                   fit: BoxFit.cover,
+                                  fadeInDuration: Duration.zero,
+                                  fadeOutDuration: Duration.zero,
                                   placeholder: (context, _) => Container(
                                     color: AppColors.secondaryCard,
                                     child: const Center(

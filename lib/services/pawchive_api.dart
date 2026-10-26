@@ -66,6 +66,7 @@ class PawchiveApi {
         final path = f['path'] as String?;
         final name = f['name'] as String? ?? 'file_$itemCounter';
         final previewOnly = f['preview_only'] == true;
+        final tempUrl = f['temp_url'] as String?;
 
         if (path != null && (MediaItem.checkIsImage(name) || MediaItem.checkIsVideo(name) || MediaItem.checkIsImage(path))) {
           itemCounter++;
@@ -74,6 +75,7 @@ class PawchiveApi {
             name: name,
             path: path,
             previewOnly: previewOnly,
+            tempUrl: tempUrl,
           ));
         }
       }
@@ -87,6 +89,7 @@ class PawchiveApi {
             final path = m['path'] as String?;
             final name = m['name'] as String? ?? 'attachment_$itemCounter';
             final previewOnly = m['preview_only'] == true;
+            final tempUrl = m['temp_url'] as String?;
 
             if (path != null && (MediaItem.checkIsImage(name) || MediaItem.checkIsVideo(name) || MediaItem.checkIsImage(path))) {
               itemCounter++;
@@ -95,6 +98,7 @@ class PawchiveApi {
                 name: name,
                 path: path,
                 previewOnly: previewOnly,
+                tempUrl: tempUrl,
               ));
             }
           }
@@ -131,6 +135,7 @@ class PawchiveApi {
     required String name,
     required String path,
     required bool previewOnly,
+    String? tempUrl,
   }) {
     final cleanPath = path.startsWith('/') ? path : '/$path';
     final isVideo = MediaItem.checkIsVideo(name) || MediaItem.checkIsVideo(path);
@@ -139,7 +144,10 @@ class PawchiveApi {
     String downloadUrl;
     String? fallbackUrl;
 
-    if (previewOnly) {
+    if (tempUrl != null && tempUrl.isNotEmpty) {
+      downloadUrl = tempUrl;
+      fallbackUrl = thumbnailUrl;
+    } else if (previewOnly) {
       downloadUrl = thumbnailUrl;
     } else {
       downloadUrl =

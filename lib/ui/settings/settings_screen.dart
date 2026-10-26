@@ -128,15 +128,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               children: [
                 CupertinoListTile(
-                  title: const Text('创建独立专属相簿',
-                      style: TextStyle(color: AppColors.textPrimary)),
-                  trailing: CupertinoSwitch(
-                    activeTrackColor: AppColors.primary,
-                    value: settings.customAlbum,
-                    onChanged: (val) => notifier.toggleCustomAlbum(val),
-                  ),
-                ),
-                CupertinoListTile(
                   title: const Text('存入相册后清理临时缓存',
                       style: TextStyle(color: AppColors.textPrimary)),
                   trailing: CupertinoSwitch(

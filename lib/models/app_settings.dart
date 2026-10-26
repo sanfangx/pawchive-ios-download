@@ -4,8 +4,6 @@ class AppSettings {
   final int concurrency;
   final int autoRetryCount;
   final bool chunkAcceleration;
-  final bool customAlbum;
-  final String albumNamePrefix;
   final bool exifAlignEnabled;
   final bool trollStoreKeepAlive;
   final bool notifyOnComplete;
@@ -16,8 +14,6 @@ class AppSettings {
     this.concurrency = 4,
     this.autoRetryCount = 3,
     this.chunkAcceleration = false,
-    this.customAlbum = true,
-    this.albumNamePrefix = '[Pawchive]',
     this.exifAlignEnabled = false,
     this.trollStoreKeepAlive = true,
     this.notifyOnComplete = true,
@@ -29,8 +25,6 @@ class AppSettings {
     int? concurrency,
     int? autoRetryCount,
     bool? chunkAcceleration,
-    bool? customAlbum,
-    String? albumNamePrefix,
     bool? exifAlignEnabled,
     bool? trollStoreKeepAlive,
     bool? notifyOnComplete,
@@ -41,8 +35,6 @@ class AppSettings {
       concurrency: concurrency ?? this.concurrency,
       autoRetryCount: autoRetryCount ?? this.autoRetryCount,
       chunkAcceleration: chunkAcceleration ?? this.chunkAcceleration,
-      customAlbum: customAlbum ?? this.customAlbum,
-      albumNamePrefix: albumNamePrefix ?? this.albumNamePrefix,
       exifAlignEnabled: exifAlignEnabled ?? this.exifAlignEnabled,
       trollStoreKeepAlive: trollStoreKeepAlive ?? this.trollStoreKeepAlive,
       notifyOnComplete: notifyOnComplete ?? this.notifyOnComplete,
@@ -58,8 +50,6 @@ class AppSettings {
       'concurrency': concurrency,
       'autoRetryCount': autoRetryCount,
       'chunkAcceleration': chunkAcceleration,
-      'customAlbum': customAlbum,
-      'albumNamePrefix': albumNamePrefix,
       'exifAlignEnabled': exifAlignEnabled,
       'trollStoreKeepAlive': trollStoreKeepAlive,
       'notifyOnComplete': notifyOnComplete,
@@ -73,8 +63,6 @@ class AppSettings {
       concurrency: map['concurrency'] as int? ?? 4,
       autoRetryCount: map['autoRetryCount'] as int? ?? 3,
       chunkAcceleration: map['chunkAcceleration'] as bool? ?? false,
-      customAlbum: map['customAlbum'] as bool? ?? true,
-      albumNamePrefix: map['albumNamePrefix'] as String? ?? '[Pawchive]',
       exifAlignEnabled: map['exifAlignEnabled'] as bool? ?? false,
       trollStoreKeepAlive: map['trollStoreKeepAlive'] as bool? ?? true,
       notifyOnComplete: map['notifyOnComplete'] as bool? ?? true,

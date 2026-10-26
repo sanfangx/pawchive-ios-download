@@ -70,9 +70,9 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
   Widget build(BuildContext context) {
     final currentItem = widget.items[_currentIndex];
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
+    return CupertinoPageScaffold(
+      backgroundColor: CupertinoColors.black,
+      child: Stack(
         children: [
           // 1. PageView for swiping
           GestureDetector(
@@ -98,30 +98,24 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
                   maxScale: 4.0,
                   child: Center(
                     child: CachedNetworkImage(
-                      imageUrl: item.downloadUrl,
+                      imageUrl: item.thumbnailUrl,
                       fit: BoxFit.contain,
-                      placeholder: (context, url) => Center(
-                        child: CachedNetworkImage(
-                          imageUrl: item.thumbnailUrl,
-                          fit: BoxFit.contain,
-                          placeholder: (context, _) => const CupertinoActivityIndicator(
-                            color: CupertinoColors.white,
-                          ),
+                      fadeInDuration: Duration.zero,
+                      fadeOutDuration: Duration.zero,
+                      placeholder: (context, url) => const Center(
+                        child: CupertinoActivityIndicator(
+                          color: CupertinoColors.white,
                         ),
                       ),
-                      errorWidget: (context, url, error) => CachedNetworkImage(
-                        imageUrl: item.thumbnailUrl,
-                        fit: BoxFit.contain,
-                        errorWidget: (context, url, error) => const Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(CupertinoIcons.exclamationmark_triangle,
-                                color: CupertinoColors.systemRed, size: 40),
-                            SizedBox(height: 8),
-                            Text('无法加载原图',
-                                style: TextStyle(color: CupertinoColors.white)),
-                          ],
-                        ),
+                      errorWidget: (context, url, error) => const Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(CupertinoIcons.exclamationmark_triangle,
+                              color: CupertinoColors.systemRed, size: 40),
+                          SizedBox(height: 8),
+                          Text('无法加载图片',
+                              style: TextStyle(color: CupertinoColors.white)),
+                        ],
                       ),
                     ),
                   ),
@@ -131,15 +125,15 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
           ),
 
           // 2. Top Bar with animated fade (⑪)
-          AnimatedOpacity(
-            opacity: _showBars ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 220),
-            child: IgnorePointer(
-              ignoring: !_showBars,
-              child: Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: AnimatedOpacity(
+              opacity: _showBars ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 220),
+              child: IgnorePointer(
+                ignoring: !_showBars,
                 child: Container(
                   padding: EdgeInsets.only(
                     top: MediaQuery.of(context).padding.top + 8,

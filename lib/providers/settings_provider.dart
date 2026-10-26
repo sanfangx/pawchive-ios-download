@@ -27,11 +27,6 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     await updateSettings(updated);
   }
 
-  Future<void> toggleCustomAlbum(bool value) async {
-    final updated = state.copyWith(customAlbum: value);
-    await updateSettings(updated);
-  }
-
   Future<void> toggleExifAlign(bool value) async {
     final updated = state.copyWith(exifAlignEnabled: value);
     await updateSettings(updated);
