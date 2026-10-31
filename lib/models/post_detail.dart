@@ -27,6 +27,10 @@ class PostDetail {
   List<MediaItem> get selectedItems => items.where((i) => i.isSelected).toList();
   bool get hasSelection => selectedCount > 0;
   bool get isAllSelected => items.isNotEmpty && selectedCount == items.length;
+  bool get isAllExceptFirstSelected {
+    if (items.length <= 1) return false;
+    return !items[0].isSelected && items.skip(1).every((i) => i.isSelected);
+  }
 
   PostDetail copyWith({
     PostTarget? target,

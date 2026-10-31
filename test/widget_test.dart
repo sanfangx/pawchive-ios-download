@@ -9,6 +9,7 @@ import 'package:pawchive_download/providers/download_provider.dart';
 import 'package:pawchive_download/providers/post_provider.dart';
 import 'package:pawchive_download/services/url_parser.dart';
 import 'package:pawchive_download/ui/gallery/image_viewer_screen.dart';
+import 'package:pawchive_download/ui/main_tab_scaffold.dart';
 
 void main() {
   group('UrlParser Tests', () {
@@ -148,6 +149,14 @@ void main() {
       state = container.read(postDetailProvider).value!;
       expect(state.selectedCount, equals(0));
       expect(state.hasSelection, isFalse);
+
+      // Select All Except First
+      notifier.selectAllExceptFirst();
+      state = container.read(postDetailProvider).value!;
+      expect(state.selectedCount, equals(1));
+      expect(state.items[0].isSelected, isFalse);
+      expect(state.items[1].isSelected, isTrue);
+      expect(state.isAllExceptFirstSelected, isTrue);
     });
   });
 
@@ -292,6 +301,20 @@ void main() {
       final restored = AppSettings.fromMap(map);
       expect(restored.concurrency, equals(5));
       expect(restored.cleanCacheAfterAlbumSave, isFalse);
+    });
+
+    testWidgets('MainTabScaffold renders 3 tabs (首页, 历史, 设置)', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: CupertinoApp(
+            home: MainTabScaffold(),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('首页'), findsWidgets);
+      expect(find.text('历史'), findsOneWidget);
+      expect(find.text('设置'), findsOneWidget);
     });
   });
 }

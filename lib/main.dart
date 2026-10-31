@@ -3,7 +3,7 @@ import 'package:flutter/material.dart' show DefaultMaterialLocalizations;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'services/notification_service.dart';
 import 'ui/common/cupertino_helpers.dart';
-import 'ui/home/home_screen.dart';
+import 'ui/main_tab_scaffold.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -55,7 +55,7 @@ class PawchiveApp extends StatelessWidget {
         DefaultCupertinoLocalizations.delegate,
         DefaultWidgetsLocalizations.delegate,
       ],
-      home: HomeScreen(),
+      home: MainTabScaffold(),
     );
   }
 }

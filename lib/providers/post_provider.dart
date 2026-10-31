@@ -68,6 +68,15 @@ class PostDetailNotifier extends StateNotifier<AsyncValue<PostDetail?>> {
     state = AsyncValue.data(current.copyWith(items: updatedItems));
   }
 
+  void selectAllExceptFirst() {
+    final current = state.value;
+    if (current == null || current.items.isEmpty) return;
+    final updatedItems = current.items.asMap().entries.map((entry) {
+      return entry.value.copyWith(isSelected: entry.key != 0);
+    }).toList();
+    state = AsyncValue.data(current.copyWith(items: updatedItems));
+  }
+
   void reset() {
     state = const AsyncValue.data(null);
   }
