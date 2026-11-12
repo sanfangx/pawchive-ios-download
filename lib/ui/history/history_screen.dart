@@ -21,7 +21,7 @@ class HistoryScreen extends ConsumerStatefulWidget {
 
 class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   HistoryViewMode _viewMode = HistoryViewMode.byTime;
-  final Set<String> _expandedAuthors = {};
+  final Set<String> _collapsedAuthors = {};
 
   String _formatDate(DateTime dt) {
     final now = DateTime.now();
@@ -83,6 +83,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                           isDestructiveAction: true,
                           onPressed: () {
                             ref.read(historyProvider.notifier).clearAll();
+                            setState(() {
+                              _collapsedAuthors.clear();
+                            });
                             Navigator.of(ctx).pop();
                           },
                           child: const Text('清空'),
@@ -212,9 +215,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
   // 1. 按时间排序列表
   Widget _buildTimeSortedList(List<HistoryItem> list) {
+    final bottomOffset = 50.0 + MediaQuery.viewPaddingOf(context).bottom + 20.0;
     // Already sorted by savedAt descending in storage/provider
     return ListView.builder(
-      padding: const EdgeInsets.only(left: 16, right: 16, top: 4, bottom: 90),
+      padding: EdgeInsets.only(left: 16, right: 16, top: 4, bottom: bottomOffset),
       itemCount: list.length,
       itemBuilder: (context, index) {
         final item = list[index];
@@ -225,6 +229,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
   // 2. 按作者分类收纳列表
   Widget _buildAuthorGroupedList(List<HistoryItem> list) {
+    final bottomOffset = 50.0 + MediaQuery.viewPaddingOf(context).bottom + 20.0;
     // Group posts by authorName
     final Map<String, List<HistoryItem>> authorMap = {};
     for (final item in list) {
@@ -241,12 +246,12 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       });
 
     return ListView.builder(
-      padding: const EdgeInsets.only(left: 16, right: 16, top: 4, bottom: 90),
+      padding: EdgeInsets.only(left: 16, right: 16, top: 4, bottom: bottomOffset),
       itemCount: authors.length,
       itemBuilder: (context, index) {
         final authorName = authors[index];
         final authorPosts = authorMap[authorName]!;
-        final isExpanded = _expandedAuthors.contains(authorName) || _expandedAuthors.isEmpty;
+        final isExpanded = !_collapsedAuthors.contains(authorName);
         final firstItem = authorPosts.first;
         final totalMedia = authorPosts.fold<int>(0, (sum, e) => sum + e.mediaCount);
 
@@ -269,10 +274,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 onTap: () {
                   HapticFeedback.selectionClick();
                   setState(() {
-                    if (_expandedAuthors.contains(authorName)) {
-                      _expandedAuthors.remove(authorName);
+                    if (_collapsedAuthors.contains(authorName)) {
+                      _collapsedAuthors.remove(authorName);
                     } else {
-                      _expandedAuthors.add(authorName);
+                      _collapsedAuthors.add(authorName);
                     }
                   });
                 },

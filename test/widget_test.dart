@@ -3,12 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pawchive_download/models/app_settings.dart';
 import 'package:pawchive_download/models/download_task.dart';
+import 'package:pawchive_download/models/history_item.dart';
 import 'package:pawchive_download/models/media_item.dart';
 import 'package:pawchive_download/models/post_detail.dart';
 import 'package:pawchive_download/providers/download_provider.dart';
+import 'package:pawchive_download/providers/history_provider.dart';
 import 'package:pawchive_download/providers/post_provider.dart';
 import 'package:pawchive_download/services/url_parser.dart';
+import 'package:pawchive_download/ui/download/download_sheet.dart';
 import 'package:pawchive_download/ui/gallery/image_viewer_screen.dart';
+import 'package:pawchive_download/ui/history/history_screen.dart';
 import 'package:pawchive_download/ui/main_tab_scaffold.dart';
 
 void main() {
@@ -316,5 +320,150 @@ void main() {
       expect(find.text('历史'), findsOneWidget);
       expect(find.text('设置'), findsOneWidget);
     });
+
+    testWidgets('HistoryScreen author grouping folds/unfolds independently without cross-author bug', (tester) async {
+      final item1 = HistoryItem(
+        url: 'https://pawchive.pw/patreon/user/1/post/101',
+        title: 'Post by Alice',
+        authorName: 'Alice',
+        authorAvatarUrl: '',
+        coverUrl: '',
+        mediaCount: 3,
+        service: 'patreon',
+        savedAt: DateTime.now().subtract(const Duration(minutes: 5)),
+      );
+      final item2 = HistoryItem(
+        url: 'https://pawchive.pw/patreon/user/2/post/102',
+        title: 'Post by Bob',
+        authorName: 'Bob',
+        authorAvatarUrl: '',
+        coverUrl: '',
+        mediaCount: 5,
+        service: 'patreon',
+        savedAt: DateTime.now().subtract(const Duration(minutes: 10)),
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            historyProvider.overrideWith((ref) => FakeHistoryNotifier([item1, item2])),
+          ],
+          child: const CupertinoApp(
+            home: HistoryScreen(),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // Switch to "按作者收纳"
+      await tester.tap(find.text('按作者收纳'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // Initially both authors are expanded
+      expect(find.text('Alice'), findsOneWidget);
+      expect(find.text('Post by Alice'), findsOneWidget);
+      expect(find.text('Bob'), findsOneWidget);
+      expect(find.text('Post by Bob'), findsOneWidget);
+
+      // Tap first author "Alice" -> Alice should collapse, Bob should REMAIN EXPANDED
+      await tester.tap(find.text('Alice'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('Post by Alice'), findsNothing);
+      expect(find.text('Post by Bob'), findsOneWidget);
+
+      // Tap first author "Alice" again -> Alice should re-expand, Bob still expanded
+      await tester.tap(find.text('Alice'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('Post by Alice'), findsOneWidget);
+      expect(find.text('Post by Bob'), findsOneWidget);
+
+      // Tap second author "Bob" -> Bob collapses, Alice remains expanded
+      await tester.tap(find.text('Bob'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('Post by Alice'), findsOneWidget);
+      expect(find.text('Post by Bob'), findsNothing);
+    });
+
+    testWidgets('HomeScreen shows download action dock above tab bar when items are selected', (tester) async {
+      final target = UrlParser.parse('https://pawchive.pw/patreon/user/1/post/1')!;
+      const item1 = MediaItem(
+        id: '1',
+        name: 'img1.jpg',
+        path: '/img1.jpg',
+        downloadUrl: 'https://example.com/1.jpg',
+        thumbnailUrl: 'https://example.com/thumb1.jpg',
+        isVideo: false,
+        isSelected: false,
+      );
+      const item2 = MediaItem(
+        id: '2',
+        name: 'img2.jpg',
+        path: '/img2.jpg',
+        downloadUrl: 'https://example.com/2.jpg',
+        thumbnailUrl: 'https://example.com/thumb2.jpg',
+        isVideo: false,
+        isSelected: false,
+      );
+
+      final post = PostDetail(
+        target: target,
+        id: '1',
+        title: 'Test Post Photos',
+        authorName: 'Artist',
+        authorAvatarUrl: '',
+        publishedAt: '2026-11-12',
+        contentHtml: '',
+        items: [item1, item2],
+      );
+
+      final container = ProviderContainer();
+      container.read(postDetailProvider.notifier).setPost(post);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const CupertinoApp(
+            home: MainTabScaffold(),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // Verify the dock buttons exist and are initially unselected
+      expect(find.text('打包为 ZIP'), findsOneWidget);
+      expect(find.text('下载到相册'), findsOneWidget);
+
+      // Check vertical positioning: download dock must be above the tab bar
+      final downloadBtnCenter = tester.getCenter(find.text('下载到相册'));
+      final tabHomeCenter = tester.getCenter(find.text('首页'));
+      expect(downloadBtnCenter.dy < tabHomeCenter.dy, isTrue);
+
+      // Tap "全选" to select both images
+      await tester.tap(find.text('全选'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // Now selection count is reflected on download button
+      expect(find.text('下载到相册 (2)'), findsOneWidget);
+      expect(find.text('打包 ZIP (2)'), findsOneWidget);
+
+      // Tap "下载到相册 (2)"
+      await tester.tap(find.text('下载到相册 (2)'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // DownloadSheet popup appears
+      expect(find.byType(DownloadSheet), findsOneWidget);
+    });
   });
+}
+
+class FakeHistoryNotifier extends HistoryNotifier {
+  FakeHistoryNotifier(List<HistoryItem> initial) : super() {
+    state = initial;
+  }
+
+  @override
+  Future<void> loadHistory() async {}
 }

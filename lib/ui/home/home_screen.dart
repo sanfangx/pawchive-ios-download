@@ -12,6 +12,7 @@ import '../../providers/post_provider.dart';
 import '../../services/url_parser.dart';
 import '../common/cupertino_helpers.dart';
 import '../download/download_sheet.dart';
+import '../download/floating_download_pill.dart';
 import '../gallery/image_viewer_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -156,6 +157,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final postAsync = ref.watch(postDetailProvider);
     final currentPost = postAsync.value;
     final downloadState = ref.watch(downloadTaskProvider);
+
+    final double bottomPadding = MediaQuery.viewPaddingOf(context).bottom;
+    final double tabHeight = 50.0 + bottomPadding;
+    final double dockBottom = tabHeight + 12.0;
+    final bool isKeyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
 
     return CupertinoPageScaffold(
       backgroundColor: AppColors.background,
@@ -538,7 +544,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
                   // 5. Media Grid (3 Columns)
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 2, 16, 100), // clearance for bottom action dock
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      2,
+                      16,
+                      dockBottom + 70.0, // clearance for bottom action dock
+                    ),
                     sliver: SliverGrid(
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 3,
@@ -736,11 +747,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
 
             // 7. Bottom Dock: Export Action Bar (Frosted Glass, above tab bar)
-            if (currentPost != null)
+            if (currentPost != null && !isKeyboardVisible)
               Positioned(
                 left: 16,
                 right: 16,
-                bottom: 12,
+                bottom: dockBottom,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(22),
                   child: BackdropFilter(
@@ -804,7 +815,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           ),
                           const SizedBox(width: 10),
 
-                          // 存入相册按钮
+                          // 下载/存入相册按钮
                           Expanded(
                             child: CupertinoButton(
                               color: AppColors.primary,
@@ -823,7 +834,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Icon(
-                                    CupertinoIcons.photo,
+                                    CupertinoIcons.arrow_down_to_line,
                                     size: 16,
                                     color: currentPost.hasSelection
                                         ? CupertinoColors.white
@@ -832,8 +843,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                   const SizedBox(width: 6),
                                   Text(
                                     currentPost.hasSelection
-                                        ? '存入相册 (${currentPost.selectedCount})'
-                                        : '存入相册',
+                                        ? '下载到相册 (${currentPost.selectedCount})'
+                                        : '下载到相册',
                                     style: TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w600,
@@ -851,6 +862,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                   ),
                 ),
+              ),
+
+            // 8. Floating Download Progress Pill
+            if (!isKeyboardVisible)
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: currentPost != null ? (dockBottom + 66.0) : dockBottom,
+                child: const FloatingDownloadPill(),
               ),
           ],
         ),
