@@ -19,6 +19,14 @@ class FloatingDownloadPill extends ConsumerWidget {
 
     final hasActive = managerState.hasActiveTasks;
     final primary = managerState.primaryTask;
+    final hasFailed = !hasActive &&
+        managerState.finishedTasks.any(
+          (t) => t.status == DownloadStatus.failed,
+        );
+    final hasPartialFailure = !hasActive &&
+        managerState.finishedTasks.any(
+          (t) => t.status == DownloadStatus.completed && t.failedCount > 0,
+        );
 
     return GestureDetector(
       onTap: () {
@@ -36,7 +44,11 @@ class FloatingDownloadPill extends ConsumerWidget {
           border: Border.all(
             color: hasActive
                 ? AppColors.primary.withAlpha(120)
-                : AppColors.separator,
+                : hasFailed
+                    ? AppColors.destructive.withAlpha(140)
+                    : hasPartialFailure
+                        ? CupertinoColors.systemOrange.withAlpha(140)
+                        : AppColors.separator,
             width: 1.0,
           ),
           boxShadow: [
@@ -55,6 +67,18 @@ class FloatingDownloadPill extends ConsumerWidget {
                 // Leading status indicator
                 if (hasActive)
                   const CupertinoActivityIndicator(radius: 9)
+                else if (hasFailed)
+                  const Icon(
+                    CupertinoIcons.exclamationmark_circle_fill,
+                    color: AppColors.destructive,
+                    size: 20,
+                  )
+                else if (hasPartialFailure)
+                  const Icon(
+                    CupertinoIcons.exclamationmark_triangle_fill,
+                    color: CupertinoColors.systemOrange,
+                    size: 20,
+                  )
                 else
                   const Icon(
                     CupertinoIcons.checkmark_circle_fill,
@@ -204,6 +228,19 @@ class FloatingDownloadPill extends ConsumerWidget {
         return '${primary.completedCount}/${primary.totalCount} · $modeStr';
       }
       return '下载中';
+    }
+    final partialTasks = state.finishedTasks
+        .where((t) => t.status == DownloadStatus.completed && t.failedCount > 0)
+        .toList();
+    if (partialTasks.isNotEmpty) {
+      final totalSucceeded =
+          partialTasks.fold<int>(0, (sum, t) => sum + t.completedCount);
+      final totalFailed =
+          partialTasks.fold<int>(0, (sum, t) => sum + t.failedCount);
+      return '部分失败 · 成功 $totalSucceeded 项，$totalFailed 项失败';
+    }
+    if (state.finishedTasks.any((t) => t.status == DownloadStatus.failed)) {
+      return '有任务下载失败，点击查看';
     }
     return '已完成，点击查看';
   }

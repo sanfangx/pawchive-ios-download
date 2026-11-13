@@ -24,6 +24,7 @@ class ZipService {
     required String zipFileName,
     bool cleanCacheAfterPack = true,
     void Function(int current, int total)? onProgress,
+    bool Function()? isCancelled,
   }) async {
     final docDir = await getApplicationDocumentsDirectory();
     final zipFilePath = p.join(docDir.path, zipFileName);
@@ -35,30 +36,67 @@ class ZipService {
       throw Exception('没有已下载的文件可供打包');
     }
 
+    if (isCancelled?.call() == true) {
+      await StorageService.deleteTempFilesForMedia(
+        downloadedItems.map((i) => i.localPath),
+      );
+      throw Exception('下载已取消');
+    }
+
     // If existing zip exists, delete it first to ensure clean archive
-    final existingFile = File(zipFilePath);
-    if (await existingFile.exists()) {
-      await existingFile.delete();
+    final zipFile = File(zipFilePath);
+    if (await zipFile.exists()) {
+      await zipFile.delete();
     }
 
     final encoder = ZipFileEncoder();
     encoder.create(zipFilePath, level: 0);
 
-    for (int i = 0; i < downloadedItems.length; i++) {
-      final item = downloadedItems[i];
-      final file = File(item.localPath!);
-      if (await file.exists()) {
-        await encoder.addFile(file, p.basename(item.localPath!));
+    bool cancelledOrFailed = false;
+    int addedCount = 0;
+
+    try {
+      for (int i = 0; i < downloadedItems.length; i++) {
+        if (isCancelled?.call() == true) {
+          cancelledOrFailed = true;
+          throw Exception('下载已取消');
+        }
+
+        final item = downloadedItems[i];
+        final file = File(item.localPath!);
+        if (await file.exists()) {
+          await encoder.addFile(file, p.basename(item.localPath!));
+          addedCount++;
+        }
+        onProgress?.call(i + 1, downloadedItems.length);
       }
-      onProgress?.call(i + 1, downloadedItems.length);
-    }
 
-    await encoder.close();
+      if (isCancelled?.call() == true) {
+        cancelledOrFailed = true;
+        throw Exception('下载已取消');
+      }
 
-    // Clean up temporary downloaded files
-    if (cleanCacheAfterPack) {
-      for (final item in downloadedItems) {
-        await StorageService.deleteTempFileAndPruneBatchDir(File(item.localPath!));
+      if (addedCount == 0) {
+        cancelledOrFailed = true;
+        throw Exception('没有可打包的有效媒体文件');
+      }
+    } catch (_) {
+      cancelledOrFailed = true;
+      rethrow;
+    } finally {
+      await encoder.close();
+
+      if (cancelledOrFailed && await zipFile.exists()) {
+        try {
+          await zipFile.delete();
+        } catch (_) {}
+      }
+
+      // Clean up temporary downloaded files on completion or cancellation
+      if (cleanCacheAfterPack || isCancelled?.call() == true) {
+        await StorageService.deleteTempFilesForMedia(
+          downloadedItems.map((i) => i.localPath),
+        );
       }
     }
 

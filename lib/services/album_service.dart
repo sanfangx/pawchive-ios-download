@@ -82,7 +82,21 @@ class AlbumService {
     required List<MediaItem> items,
     bool cleanCacheAfterSave = true,
     void Function(int current, int total)? onProgress,
+    bool Function()? isCancelled,
   }) async {
+    final downloadedItems =
+        items.where((i) => i.isDownloaded && i.localPath != null).toList();
+    if (downloadedItems.isEmpty) {
+      return 0;
+    }
+
+    if (isCancelled?.call() == true) {
+      await StorageService.deleteTempFilesForMedia(
+        downloadedItems.map((i) => i.localPath),
+      );
+      throw Exception('下载已取消');
+    }
+
     // Check and request photo access permission
     final hasAccess = await Gal.hasAccess();
     if (!hasAccess) {
@@ -92,18 +106,17 @@ class AlbumService {
       }
     }
 
-    final downloadedItems =
-        items.where((i) => i.isDownloaded && i.localPath != null).toList();
-    if (downloadedItems.isEmpty) {
-      return 0;
-    }
-
     final timestamps = computeOrderedCreationTimestampsMs(downloadedItems.length);
-    _lastBatchEndMs = timestamps.last;
-
     int savedCount = 0;
 
     for (int i = 0; i < downloadedItems.length; i++) {
+      if (isCancelled?.call() == true) {
+        await StorageService.deleteTempFilesForMedia(
+          downloadedItems.map((item) => item.localPath),
+        );
+        throw Exception('下载已取消');
+      }
+
       final item = downloadedItems[i];
       final path = item.localPath!;
       final file = File(path);
@@ -116,6 +129,7 @@ class AlbumService {
             creationTimestampMs: timestamps[i],
           );
           savedCount++;
+          _lastBatchEndMs = timestamps[i];
 
           // Delete temp cache immediately to prevent 2x storage bloat
           if (cleanCacheAfterSave) {

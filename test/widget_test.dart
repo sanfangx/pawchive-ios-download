@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:archive/archive.dart';
 import 'package:flutter/cupertino.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pawchive_download/models/app_settings.dart';
 import 'package:pawchive_download/models/download_task.dart';
 import 'package:pawchive_download/models/history_item.dart';
@@ -15,9 +17,11 @@ import 'package:pawchive_download/providers/history_provider.dart';
 import 'package:pawchive_download/providers/post_provider.dart';
 import 'package:pawchive_download/services/album_service.dart';
 import 'package:pawchive_download/services/download_service.dart';
+import 'package:pawchive_download/services/notification_service.dart';
 import 'package:pawchive_download/services/url_parser.dart';
 import 'package:pawchive_download/services/zip_service.dart';
 import 'package:pawchive_download/ui/download/download_sheet.dart';
+import 'package:pawchive_download/ui/download/floating_download_pill.dart';
 import 'package:pawchive_download/ui/gallery/image_viewer_screen.dart';
 import 'package:pawchive_download/ui/history/history_screen.dart';
 import 'package:pawchive_download/ui/main_tab_scaffold.dart';
@@ -658,6 +662,541 @@ void main() {
       }
     });
   });
+
+  group('Progress Monotonicity, Cancellation Cleanup & Partial Failure Tests', () {
+    const MethodChannel pathProviderChannel =
+        MethodChannel('plugins.flutter.io/path_provider');
+    const MethodChannel albumChannel =
+        MethodChannel('pawchive_download/album');
+    const MethodChannel galChannel = MethodChannel('gal');
+
+    Future<T> withMockDirs<T>(
+      Future<T> Function(Directory tmpDir, Directory docsDir) body,
+    ) async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      SharedPreferences.setMockInitialValues({});
+      final tempRoot =
+          Directory.systemTemp.createTempSync('pawchive_pipeline_test_');
+      final tmpDir = Directory(p.join(tempRoot.path, 'tmp'))..createSync();
+      final docsDir = Directory(p.join(tempRoot.path, 'docs'))..createSync();
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(pathProviderChannel, (call) async {
+        if (call.method == 'getTemporaryDirectory') return tmpDir.path;
+        if (call.method == 'getApplicationDocumentsDirectory') {
+          return docsDir.path;
+        }
+        return tempRoot.path;
+      });
+
+      try {
+        return await body(tmpDir, docsDir);
+      } finally {
+        messenger.setMockMethodCallHandler(pathProviderChannel, null);
+        if (tempRoot.existsSync()) {
+          tempRoot.deleteSync(recursive: true);
+        }
+      }
+    }
+
+    MediaItem makeItem(int index, String url, {String? fallbackUrl}) {
+      return MediaItem(
+        id: 'm_$index',
+        name: 'file_$index.jpg',
+        path: '/file_$index.jpg',
+        downloadUrl: url,
+        fallbackUrl: fallbackUrl,
+        thumbnailUrl: url,
+        isVideo: false,
+        isSelected: true,
+      );
+    }
+
+    PostDetail makePost(String id, String title, List<MediaItem> items) {
+      return PostDetail(
+        target: UrlParser.parse('https://pawchive.pw/patreon/user/1/post/$id')!,
+        id: id,
+        title: title,
+        authorName: 'Artist',
+        authorAvatarUrl: '',
+        publishedAt: '2026-11-13',
+        contentHtml: '',
+        items: items,
+      );
+    }
+
+    Future<DownloadTask> waitForTaskCondition(
+      ProviderContainer container,
+      bool Function(DownloadTask task) predicate,
+    ) async {
+      final deadline = DateTime.now().add(const Duration(seconds: 10));
+      while (DateTime.now().isBefore(deadline)) {
+        final tasks = container.read(downloadTaskProvider).tasks;
+        if (tasks.isNotEmpty && predicate(tasks.first)) {
+          return tasks.first;
+        }
+        await Future.delayed(const Duration(milliseconds: 20));
+      }
+      fail('Timed out waiting for download task condition');
+    }
+
+    test('Concurrent DownloadService progress never decreases across chunked workers and fallback retry', () async {
+      await withMockDirs((tmpDir, docsDir) async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        server.listen((req) async {
+          final seg = req.uri.pathSegments.last;
+          if (seg == 'fail_once') {
+            // Send half response then reset/404 to exercise fallback retry
+            req.response.statusCode = HttpStatus.notFound;
+            await req.response.close();
+            return;
+          }
+          final chunk = List<int>.filled(4096, 1);
+          const totalChunks = 4;
+          req.response.statusCode = HttpStatus.ok;
+          req.response.contentLength = chunk.length * totalChunks;
+          req.response.bufferOutput = false;
+          for (int c = 0; c < totalChunks; c++) {
+            req.response.add(chunk);
+            await req.response.flush();
+            await Future.delayed(
+              Duration(milliseconds: seg == '0' ? 45 : 20),
+            );
+          }
+          await req.response.close();
+        });
+
+        try {
+          final items = [
+            makeItem(0, 'http://127.0.0.1:${server.port}/fail_once',
+                fallbackUrl: 'http://127.0.0.1:${server.port}/fallback_0'),
+            makeItem(1, 'http://127.0.0.1:${server.port}/1'),
+            makeItem(2, 'http://127.0.0.1:${server.port}/2'),
+            makeItem(3, 'http://127.0.0.1:${server.port}/3'),
+          ];
+
+          final emittedProgress = <double>[];
+          final service = DownloadService();
+          final results = await HttpOverrides.runWithHttpOverrides(
+            () => service.downloadBatch(
+              items: items,
+              concurrency: 4,
+              onProgress: ({
+                required completedCount,
+                required totalCount,
+                required overallProgress,
+                required speedStr,
+                required currentFileName,
+              }) {
+                emittedProgress.add(overallProgress);
+              },
+            ),
+            _DirectHttpOverrides(),
+          );
+
+          expect(results.every((r) => r.isDownloaded), isTrue);
+          expect(emittedProgress, isNotEmpty);
+          expect(emittedProgress.last, closeTo(1.0, 0.001));
+          for (int i = 1; i < emittedProgress.length; i++) {
+            expect(
+              emittedProgress[i],
+              greaterThanOrEqualTo(emittedProgress[i - 1]),
+              reason:
+                  'Progress regressed at index $i: ${emittedProgress[i - 1]} -> ${emittedProgress[i]}',
+            );
+          }
+        } finally {
+          await server.close(force: true);
+        }
+      });
+    });
+
+    test('Cancelling DownloadService removes partial batch temp files completely', () async {
+      await withMockDirs((tmpDir, docsDir) async {
+        final holdCompleter = Completer<void>();
+        final firstDoneCompleter = Completer<void>();
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        server.listen((req) async {
+          final seg = req.uri.pathSegments.last;
+          if (seg == 'fast') {
+            req.response.statusCode = HttpStatus.ok;
+            req.response.contentLength = 1024;
+            req.response.add(List<int>.filled(1024, 7));
+            await req.response.close();
+            if (!firstDoneCompleter.isCompleted) {
+              firstDoneCompleter.complete();
+            }
+          } else {
+            req.response.statusCode = HttpStatus.ok;
+            req.response.contentLength = 4096;
+            req.response.bufferOutput = false;
+            req.response.add(List<int>.filled(512, 9));
+            await req.response.flush();
+            await holdCompleter.future.timeout(const Duration(seconds: 5),
+                onTimeout: () {});
+            try {
+              await req.response.close();
+            } catch (_) {}
+          }
+        });
+
+        try {
+          final service = DownloadService();
+          final items = [
+            makeItem(0, 'http://127.0.0.1:${server.port}/fast'),
+            makeItem(1, 'http://127.0.0.1:${server.port}/slow'),
+          ];
+
+          final future = HttpOverrides.runWithHttpOverrides(
+            () => service.downloadBatch(
+              items: items,
+              concurrency: 2,
+              onProgress: ({
+                required completedCount,
+                required totalCount,
+                required overallProgress,
+                required speedStr,
+                required currentFileName,
+              }) {},
+            ),
+            _DirectHttpOverrides(),
+          );
+
+          await firstDoneCompleter.future;
+          service.cancel();
+          if (!holdCompleter.isCompleted) {
+            holdCompleter.complete();
+          }
+
+          await expectLater(future, throwsException);
+          expect(tmpDir.listSync(), isEmpty);
+        } finally {
+          await server.close(force: true);
+        }
+      });
+    });
+
+    test('Cancelling AlbumService and ZipService stops work and cleans partial outputs', () async {
+      await withMockDirs((tmpDir, docsDir) async {
+        AlbumService.resetOrderState();
+        AlbumService.debugOverrideIsIos = true;
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+
+        final albumBatch = Directory(p.join(tmpDir.path, 'batch_album'))
+          ..createSync();
+        final albumItems = List<MediaItem>.generate(4, (i) {
+          final f = File(p.join(albumBatch.path, '0${i + 1}_img.jpg'))
+            ..writeAsBytesSync([1, 2, 3, i]);
+          return MediaItem(
+            id: 'a_$i',
+            name: 'img_$i.jpg',
+            path: '/img_$i.jpg',
+            downloadUrl: 'https://example.com/$i.jpg',
+            thumbnailUrl: 'https://example.com/t_$i.jpg',
+            isVideo: false,
+            isDownloaded: true,
+            localPath: f.path,
+          );
+        });
+
+        int savedCount = 0;
+        bool albumCancelled = false;
+        messenger.setMockMethodCallHandler(galChannel, (call) async => true);
+        messenger.setMockMethodCallHandler(albumChannel, (call) async {
+          savedCount++;
+          if (savedCount >= 1) {
+            albumCancelled = true;
+          }
+          return null;
+        });
+
+        try {
+          await expectLater(
+            AlbumService.saveToAlbum(
+              items: albumItems,
+              cleanCacheAfterSave: true,
+              isCancelled: () => albumCancelled,
+            ),
+            throwsException,
+          );
+          expect(savedCount, equals(1));
+          expect(albumBatch.existsSync(), isFalse);
+
+          // Now test ZipService cancellation removes partial zip and temp files
+          final zipBatch = Directory(p.join(tmpDir.path, 'batch_zip'))
+            ..createSync();
+          final zipItems = List<MediaItem>.generate(3, (i) {
+            final f = File(p.join(zipBatch.path, '0${i + 1}_z.jpg'))
+              ..writeAsBytesSync(List<int>.filled(2048, i));
+            return MediaItem(
+              id: 'z_$i',
+              name: 'z_$i.jpg',
+              path: '/z_$i.jpg',
+              downloadUrl: 'https://example.com/z$i.jpg',
+              thumbnailUrl: 'https://example.com/zt$i.jpg',
+              isVideo: false,
+              isDownloaded: true,
+              localPath: f.path,
+            );
+          });
+
+          bool zipCancelled = false;
+          await expectLater(
+            ZipService.packageZip(
+              items: zipItems,
+              zipFileName: 'partial_cancel.zip',
+              cleanCacheAfterPack: true,
+              onProgress: (current, total) {
+                if (current >= 1) zipCancelled = true;
+              },
+              isCancelled: () => zipCancelled,
+            ),
+            throwsException,
+          );
+
+          expect(
+            File(p.join(docsDir.path, 'partial_cancel.zip')).existsSync(),
+            isFalse,
+          );
+          expect(zipBatch.existsSync(), isFalse);
+        } finally {
+          AlbumService.debugOverrideIsIos = null;
+          AlbumService.resetOrderState();
+          messenger.setMockMethodCallHandler(galChannel, null);
+          messenger.setMockMethodCallHandler(albumChannel, null);
+        }
+      });
+    });
+
+    test('DownloadTaskNotifier cancels mid-savingToAlbum without overwriting status and resets failedCount on retry', () async {
+      await withMockDirs((tmpDir, docsDir) async {
+        AlbumService.resetOrderState();
+        AlbumService.debugOverrideIsIos = true;
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        server.listen((req) async {
+          req.response.statusCode = HttpStatus.ok;
+          req.response.contentLength = 128;
+          req.response.add(List<int>.filled(128, 3));
+          await req.response.close();
+        });
+
+        int albumSaveCalls = 0;
+        final firstAlbumSaveStarted = Completer<void>();
+        final releaseAlbumSave = Completer<void>();
+
+        messenger.setMockMethodCallHandler(galChannel, (call) async => true);
+        messenger.setMockMethodCallHandler(albumChannel, (call) async {
+          albumSaveCalls++;
+          if (albumSaveCalls == 1) {
+            firstAlbumSaveStarted.complete();
+            await releaseAlbumSave.future;
+          }
+          return null;
+        });
+
+        final container = ProviderContainer();
+        try {
+          await HttpOverrides.runWithHttpOverrides(() async {
+            final items = List<MediaItem>.generate(
+              3,
+              (i) => makeItem(i, 'http://127.0.0.1:${server.port}/$i'),
+            );
+
+            container.read(downloadTaskProvider.notifier).startExport(
+                  post: makePost('101', 'Cancel Album Test', items),
+                  selectedItems: items,
+                  mode: ExportMode.album,
+                );
+
+            await firstAlbumSaveStarted.future;
+            final runningTask = container.read(downloadTaskProvider).tasks.first;
+            expect(runningTask.status, equals(DownloadStatus.savingToAlbum));
+
+            container
+                .read(downloadTaskProvider.notifier)
+                .cancelTask(runningTask.id);
+            releaseAlbumSave.complete();
+
+            final finalTask = await waitForTaskCondition(
+              container,
+              (t) => t.status == DownloadStatus.cancelled,
+            );
+            // Allow any trailing microtasks to settle, ensuring status isn't overwritten
+            await Future.delayed(const Duration(milliseconds: 80));
+            expect(
+              container.read(downloadTaskProvider).tasks.first.status,
+              equals(DownloadStatus.cancelled),
+            );
+            expect(albumSaveCalls, equals(1));
+            expect(tmpDir.listSync(), isEmpty);
+
+            // Prepare for retry check
+            final notifier = container.read(downloadTaskProvider.notifier);
+            // Re-enable album saving cleanly to confirm retryTask resets state
+            notifier.cancelTask(finalTask.id);
+            notifier.retryTask(finalTask.id);
+            final completedAfterRetry = await waitForTaskCondition(
+              container,
+              (t) => t.status == DownloadStatus.completed,
+            );
+            expect(completedAfterRetry.failedCount, equals(0));
+            expect(completedAfterRetry.completedCount, equals(3));
+          }, _DirectHttpOverrides());
+        } finally {
+          container.dispose();
+          await server.close(force: true);
+          AlbumService.debugOverrideIsIos = null;
+          AlbumService.resetOrderState();
+          messenger.setMockMethodCallHandler(galChannel, null);
+          messenger.setMockMethodCallHandler(albumChannel, null);
+        }
+      });
+    });
+
+    test('Partial failures (download + album save) record failedCount accurately in DownloadTaskNotifier', () async {
+      await withMockDirs((tmpDir, docsDir) async {
+        AlbumService.resetOrderState();
+        AlbumService.debugOverrideIsIos = true;
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        server.listen((req) async {
+          final seg = req.uri.pathSegments.last;
+          if (seg == 'fail') {
+            req.response.statusCode = HttpStatus.notFound;
+            await req.response.close();
+            return;
+          }
+          req.response.statusCode = HttpStatus.ok;
+          req.response.contentLength = 128;
+          req.response.add(List<int>.filled(128, 5));
+          await req.response.close();
+        });
+
+        int albumCall = 0;
+        messenger.setMockMethodCallHandler(galChannel, (call) async => true);
+        messenger.setMockMethodCallHandler(albumChannel, (call) async {
+          albumCall++;
+          if (albumCall == 2) {
+            throw PlatformException(code: 'SAVE_ERR', message: 'Corrupt image');
+          }
+          return null;
+        });
+
+        final container = ProviderContainer();
+        try {
+          await HttpOverrides.runWithHttpOverrides(() async {
+            final items = [
+              makeItem(0, 'http://127.0.0.1:${server.port}/ok0'),
+              makeItem(1, 'http://127.0.0.1:${server.port}/ok1'),
+              makeItem(2, 'http://127.0.0.1:${server.port}/ok2'),
+              makeItem(3, 'http://127.0.0.1:${server.port}/fail'),
+            ];
+
+            // 1 item fails HTTP download + 1 item fails album save => 2 succeeded, 2 failed
+            container.read(downloadTaskProvider.notifier).startExport(
+                  post: makePost('102', 'Partial Album Post', items),
+                  selectedItems: items,
+                  mode: ExportMode.album,
+                );
+
+            final finished = await waitForTaskCondition(
+              container,
+              (t) => t.status == DownloadStatus.completed,
+            );
+            expect(finished.completedCount, equals(2));
+            expect(finished.failedCount, equals(2));
+            expect(finished.progress, equals(1.0));
+
+            await NotificationService.showDownloadComplete(
+              title: finished.postTitle,
+              totalCount: finished.completedCount,
+              failedCount: finished.failedCount,
+              isZip: true,
+            );
+          }, _DirectHttpOverrides());
+        } finally {
+          container.dispose();
+          await server.close(force: true);
+          AlbumService.debugOverrideIsIos = null;
+          AlbumService.resetOrderState();
+          messenger.setMockMethodCallHandler(galChannel, null);
+          messenger.setMockMethodCallHandler(albumChannel, null);
+        }
+      });
+    });
+
+    testWidgets('DownloadSheet and FloatingDownloadPill prominently display partial failure counts', (tester) async {
+      final partialAlbumTask = DownloadTask(
+        id: 'task_partial_album',
+        postTitle: 'Partial Album Post',
+        authorName: 'Artist',
+        exportMode: ExportMode.album,
+        items: const [],
+        status: DownloadStatus.completed,
+        totalCount: 4,
+        completedCount: 2,
+        failedCount: 2,
+        progress: 1.0,
+        createdAt: DateTime(2026, 11, 13),
+      );
+      final partialZipTask = DownloadTask(
+        id: 'task_partial_zip',
+        postTitle: 'Partial Zip Post',
+        authorName: 'Artist',
+        exportMode: ExportMode.zip,
+        items: const [],
+        status: DownloadStatus.completed,
+        totalCount: 5,
+        completedCount: 4,
+        failedCount: 1,
+        progress: 1.0,
+        resultPath: '/docs/out.zip',
+        createdAt: DateTime(2026, 11, 13),
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            downloadTaskProvider.overrideWith(
+              (ref) => FakeDownloadTaskNotifier(
+                ref,
+                DownloadManagerState(tasks: [partialAlbumTask, partialZipTask]),
+              ),
+            ),
+          ],
+          child: const CupertinoApp(
+            home: CupertinoPageScaffold(
+              child: Column(
+                children: [
+                  FloatingDownloadPill(),
+                  Expanded(child: DownloadSheet()),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(find.textContaining('部分失败 · 成功 6 项，3 项失败'), findsOneWidget);
+      expect(find.textContaining('已存入相册 · 2 项（2 项失败）'), findsOneWidget);
+      expect(find.textContaining('已保存至 Documents · 4 项（1 项失败）'), findsOneWidget);
+      expect(
+        find.byIcon(CupertinoIcons.exclamationmark_triangle_fill),
+        findsOneWidget,
+      );
+    });
+  });
+}
+
+class FakeDownloadTaskNotifier extends DownloadTaskNotifier {
+  FakeDownloadTaskNotifier(super.ref, DownloadManagerState initial) {
+    state = initial;
+  }
 }
 
 class _DirectHttpOverrides extends HttpOverrides {}

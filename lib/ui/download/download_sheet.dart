@@ -396,7 +396,10 @@ class DownloadSheet extends ConsumerWidget {
                 fontSize: 11,
                 color: task.status == DownloadStatus.failed
                     ? AppColors.destructive
-                    : AppColors.textSecondary,
+                    : (task.status == DownloadStatus.completed &&
+                            task.failedCount > 0)
+                        ? CupertinoColors.systemOrange
+                        : AppColors.textSecondary,
               ),
             ),
           ],
@@ -441,9 +444,13 @@ class DownloadSheet extends ConsumerWidget {
       case DownloadStatus.packingZip:
         return '正在打包 ZIP...';
       case DownloadStatus.completed:
-        return task.exportMode == ExportMode.zip
+        final baseText = task.exportMode == ExportMode.zip
             ? '已保存至 Documents · ${task.completedCount} 项'
             : '已存入相册 · ${task.completedCount} 项';
+        if (task.failedCount > 0) {
+          return '$baseText（${task.failedCount} 项失败）';
+        }
+        return baseText;
       case DownloadStatus.failed:
         return task.errorMessage ?? '下载失败';
       case DownloadStatus.cancelled:

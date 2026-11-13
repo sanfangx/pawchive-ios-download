@@ -48,6 +48,7 @@ class NotificationService {
   static Future<void> showDownloadComplete({
     required String title,
     required int totalCount,
+    int failedCount = 0,
     required bool isZip,
   }) async {
     const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
@@ -61,12 +62,21 @@ class NotificationService {
     );
 
     final actionText = isZip ? '已成功打包为 ZIP 归档' : '已成功存入系统相册';
+    final notifTitle =
+        failedCount > 0 ? 'Pawchive 下载部分完成' : 'Pawchive 下载完成';
+    final notifBody = failedCount > 0
+        ? '《$title》已保存 $totalCount 项媒体，$failedCount 项失败（$actionText）'
+        : '《$title》共 $totalCount 项媒体 $actionText';
 
-    await _notificationsPlugin.show(
-      id: DateTime.now().millisecond,
-      title: 'Pawchive 下载完成',
-      body: '《$title》共 $totalCount 项媒体 $actionText',
-      notificationDetails: platformDetails,
-    );
+    try {
+      await _notificationsPlugin.show(
+        id: DateTime.now().millisecond,
+        title: notifTitle,
+        body: notifBody,
+        notificationDetails: platformDetails,
+      );
+    } catch (_) {
+      // Ignore if notification plugin is unavailable (e.g., headless tests or revoked permissions)
+    }
   }
 }

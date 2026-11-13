@@ -130,6 +130,38 @@ class StorageService {
           await parentDir.exists() &&
           await parentDir.list().isEmpty) {
         await parentDir.delete();
+        await _pruneEmptyDownloadRoot(parentDir.parent);
+      }
+    } catch (_) {}
+  }
+
+  /// Delete all temporary media files referenced by [localPaths] and prune empty batch dirs.
+  static Future<void> deleteTempFilesForMedia(
+    Iterable<String?> localPaths,
+  ) async {
+    for (final path in localPaths) {
+      if (path == null || path.isEmpty) continue;
+      await deleteTempFileAndPruneBatchDir(File(path));
+    }
+  }
+
+  /// Delete a directory and all its contents quietly, pruning empty download root if applicable.
+  static Future<void> deleteDirectoryQuietly(Directory dir) async {
+    try {
+      final parent = dir.parent;
+      if (await dir.exists()) {
+        await dir.delete(recursive: true);
+      }
+      await _pruneEmptyDownloadRoot(parent);
+    } catch (_) {}
+  }
+
+  static Future<void> _pruneEmptyDownloadRoot(Directory dir) async {
+    try {
+      if (p.basename(dir.path) == 'pawchive_downloads' &&
+          await dir.exists() &&
+          await dir.list().isEmpty) {
+        await dir.delete();
       }
     } catch (_) {}
   }

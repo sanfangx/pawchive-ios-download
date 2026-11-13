@@ -52,6 +52,28 @@ class DownloadTaskNotifier extends StateNotifier<DownloadManagerState> {
     return taskId;
   }
 
+  bool _isTaskCancelled(String taskId) {
+    if (!mounted) return true;
+    final idx = state.tasks.indexWhere((t) => t.id == taskId);
+    if (idx == -1) return true;
+    return state.tasks[idx].status == DownloadStatus.cancelled;
+  }
+
+  void _onExportProgress(String taskId, int current, int total) {
+    if (!mounted || _isTaskCancelled(taskId)) return;
+    final phaseProgress = total > 0 ? 0.85 + 0.14 * (current / total) : 0.85;
+    _updateTask(taskId, (t) {
+      if (t.status == DownloadStatus.cancelled) return t;
+      final nextProgress = phaseProgress > t.progress
+          ? phaseProgress.clamp(0.0, 0.99)
+          : t.progress;
+      return t.copyWith(
+        completedCount: current,
+        progress: nextProgress,
+      );
+    });
+  }
+
   void cancelTask(String taskId) {
     final service = _activeServices[taskId];
     if (service != null) {
@@ -89,6 +111,7 @@ class DownloadTaskNotifier extends StateNotifier<DownloadManagerState> {
         status: DownloadStatus.queued,
         progress: 0.0,
         completedCount: 0,
+        failedCount: 0,
         currentSpeed: '',
         currentFileName: '',
         clearErrorMessage: true,
@@ -100,6 +123,7 @@ class DownloadTaskNotifier extends StateNotifier<DownloadManagerState> {
 
   void _updateTask(
       String taskId, DownloadTask Function(DownloadTask) updater) {
+    if (!mounted) return;
     state = state.copyWith(
       tasks: state.tasks.map((t) => t.id == taskId ? updater(t) : t).toList(),
     );
@@ -110,7 +134,7 @@ class DownloadTaskNotifier extends StateNotifier<DownloadManagerState> {
     _isProcessing = true;
 
     try {
-      while (true) {
+      while (mounted) {
         // Find next queued task (oldest queued first: FIFO)
         final queuedList = state.tasks
             .where((t) => t.status == DownloadStatus.queued)
@@ -127,6 +151,7 @@ class DownloadTaskNotifier extends StateNotifier<DownloadManagerState> {
   }
 
   Future<void> _executeTask(DownloadTask task) async {
+    if (!mounted) return;
     // Double check if cancelled before starting
     final currentStatus = state.tasks
         .firstWhere((t) => t.id == task.id, orElse: () => task)
@@ -158,30 +183,39 @@ class DownloadTaskNotifier extends StateNotifier<DownloadManagerState> {
           required String speedStr,
           required String currentFileName,
         }) {
-          _updateTask(
-            task.id,
-            (t) => t.copyWith(
+          _updateTask(task.id, (t) {
+            if (t.status == DownloadStatus.cancelled) return t;
+            final mappedProgress = (overallProgress * 0.85).clamp(0.0, 0.85);
+            final nextProgress =
+                mappedProgress > t.progress ? mappedProgress : t.progress;
+            return t.copyWith(
               completedCount: completedCount,
               totalCount: totalCount,
-              progress: overallProgress,
+              progress: nextProgress,
               currentSpeed: speedStr,
               currentFileName: currentFileName,
-            ),
-          );
+            );
+          });
         },
       );
 
       _activeServices.remove(task.id);
 
+      if (_isTaskCancelled(task.id)) {
+        await DownloadService.cleanupTempResults(downloadedResults);
+        return;
+      }
+
       final successDownloaded =
           downloadedResults.where((i) => i.isDownloaded).toList();
-      final failedCount = task.items.length - successDownloaded.length;
 
       if (successDownloaded.isEmpty) {
         throw Exception('所有媒体文件下载均失败，请检查网络');
       }
 
       // 2. Export based on mode
+      late final int exportedCount;
+      String? resultZipPath;
       if (task.exportMode == ExportMode.album) {
         _updateTask(
           task.id,
@@ -191,17 +225,18 @@ class DownloadTaskNotifier extends StateNotifier<DownloadManagerState> {
         final savedCount = await AlbumService.saveToAlbum(
           items: successDownloaded,
           cleanCacheAfterSave: settings.cleanCacheAfterAlbumSave,
+          onProgress: (current, total) =>
+              _onExportProgress(task.id, current, total),
+          isCancelled: () => _isTaskCancelled(task.id),
         );
 
-        _updateTask(
-          task.id,
-          (t) => t.copyWith(
-            status: DownloadStatus.completed,
-            completedCount: savedCount,
-            failedCount: failedCount,
-            progress: 1.0,
-          ),
-        );
+        if (_isTaskCancelled(task.id)) return;
+
+        if (savedCount == 0) {
+          await DownloadService.cleanupTempResults(successDownloaded);
+          throw Exception('所有媒体保存至相册均失败，请检查相册权限或文件格式');
+        }
+        exportedCount = savedCount;
       } else {
         _updateTask(
           task.id,
@@ -213,37 +248,51 @@ class DownloadTaskNotifier extends StateNotifier<DownloadManagerState> {
           postId: task.id,
         );
 
-        final zipPath = await ZipService.packageZip(
+        resultZipPath = await ZipService.packageZip(
           items: successDownloaded,
           zipFileName: zipFileName,
           cleanCacheAfterPack: true,
+          onProgress: (current, total) =>
+              _onExportProgress(task.id, current, total),
+          isCancelled: () => _isTaskCancelled(task.id),
         );
 
-        _updateTask(
-          task.id,
-          (t) => t.copyWith(
-            status: DownloadStatus.completed,
-            completedCount: successDownloaded.length,
-            failedCount: failedCount,
-            progress: 1.0,
-            resultPath: zipPath,
-          ),
-        );
+        if (_isTaskCancelled(task.id)) return;
+
+        exportedCount = successDownloaded.length;
       }
+
+      if (_isTaskCancelled(task.id)) return;
+
+      final totalFailedCount =
+          (task.items.length - exportedCount).clamp(0, task.items.length);
+
+      _updateTask(
+        task.id,
+        (t) => t.copyWith(
+          status: DownloadStatus.completed,
+          completedCount: exportedCount,
+          failedCount: totalFailedCount,
+          progress: 1.0,
+          resultPath: resultZipPath,
+        ),
+      );
 
       // 3. Notifications and Haptics
       if (settings.hapticFeedbackEnabled) {
         NotificationService.triggerHaptic();
       }
       if (settings.notifyOnComplete) {
-        NotificationService.showDownloadComplete(
+        await NotificationService.showDownloadComplete(
           title: task.postTitle,
-          totalCount: successDownloaded.length,
+          totalCount: exportedCount,
+          failedCount: totalFailedCount,
           isZip: task.exportMode == ExportMode.zip,
         );
       }
     } catch (e) {
       _activeServices.remove(task.id);
+      if (!mounted) return;
       final current =
           state.tasks.firstWhere((t) => t.id == task.id, orElse: () => task);
       if (current.status != DownloadStatus.cancelled) {

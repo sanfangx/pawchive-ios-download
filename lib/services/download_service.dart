@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import '../models/media_item.dart';
+import 'storage_service.dart';
 
 typedef ProgressCallback = void Function({
   required int completedCount,
@@ -14,6 +15,13 @@ typedef ProgressCallback = void Function({
 });
 
 class DownloadService {
+  /// Clean up temporary media files left in [results] and prune empty batch directories.
+  static Future<void> cleanupTempResults(List<MediaItem> results) {
+    return StorageService.deleteTempFilesForMedia(
+      results.map((i) => i.localPath),
+    );
+  }
+
   final Dio _dio;
   CancelToken? _cancelToken;
   bool _isCancelled = false;
@@ -84,6 +92,39 @@ class DownloadService {
       await batchDir.create(recursive: true);
     }
 
+    if (_isCancelled) {
+      await StorageService.deleteDirectoryQuietly(batchDir);
+      throw Exception('下载已取消');
+    }
+
+    // Aggregate per-item progress across concurrent workers so progress stays monotonic and throttled.
+    final itemProgress = List<double>.filled(totalCount, 0.0);
+    double maxOverallProgress = 0.0;
+    final emitStopwatch = Stopwatch()..start();
+    int lastEmitMs = -100;
+
+    void emitProgress(String fileName, {bool force = false}) {
+      if (_isCancelled) return;
+      final nowMs = emitStopwatch.elapsedMilliseconds;
+      if (!force && nowMs - lastEmitMs < 100) return;
+      lastEmitMs = nowMs;
+
+      final rawSum = itemProgress.fold<double>(0.0, (sum, value) => sum + value);
+      final aggregated =
+          totalCount > 0 ? (rawSum / totalCount).clamp(0.0, 1.0) : 0.0;
+      if (aggregated > maxOverallProgress) {
+        maxOverallProgress = aggregated;
+      }
+
+      onProgress(
+        completedCount: completedCount,
+        totalCount: totalCount,
+        overallProgress: maxOverallProgress,
+        speedStr: calculateSpeed(),
+        currentFileName: fileName,
+      );
+    }
+
     // Worker queue
     int nextIndex = 0;
     final activeWorkers = <Future<void>>[];
@@ -110,20 +151,16 @@ class DownloadService {
         final savePath = p.join(batchDir.path, safeName);
 
         try {
-          onProgress(
-            completedCount: completedCount,
-            totalCount: totalCount,
-            overallProgress: completedCount / totalCount,
-            speedStr: calculateSpeed(),
-            currentFileName: item.name,
-          );
+          emitProgress(item.name);
 
           // Download with fallback support
-          int itemDownloadedBytes = 0;
           bool success = false;
           String targetUrl = item.downloadUrl;
 
           for (int retry = 0; retry < 2; retry++) {
+            if (_isCancelled) break;
+            int itemDownloadedBytes = 0;
+            itemProgress[currentIndex] = 0.0;
             try {
               if (retry == 1 && item.fallbackUrl != null) {
                 targetUrl = item.fallbackUrl!;
@@ -135,20 +172,19 @@ class DownloadService {
                 cancelToken: _cancelToken,
                 deleteOnError: true,
                 onReceiveProgress: (received, total) {
+                  if (_isCancelled) return;
                   final diff = received - itemDownloadedBytes;
                   if (diff > 0) {
                     itemDownloadedBytes = received;
                     totalBytesDownloaded += diff;
                   }
-                  onProgress(
-                    completedCount: completedCount,
-                    totalCount: totalCount,
-                    overallProgress:
-                        (completedCount + (total > 0 ? received / total : 0)) /
-                            totalCount,
-                    speedStr: calculateSpeed(),
-                    currentFileName: item.name,
-                  );
+                  if (total > 0) {
+                    final itemFraction = (received / total).clamp(0.0, 1.0);
+                    if (itemFraction > itemProgress[currentIndex]) {
+                      itemProgress[currentIndex] = itemFraction;
+                    }
+                  }
+                  emitProgress(item.name);
                 },
               );
               success = true;
@@ -162,6 +198,7 @@ class DownloadService {
           }
 
           if (success) {
+            itemProgress[currentIndex] = 1.0;
             completedCount++;
             results[currentIndex] = item.copyWith(
               isDownloaded: true,
@@ -171,6 +208,7 @@ class DownloadService {
           }
         } catch (e) {
           if (_isCancelled) break;
+          itemProgress[currentIndex] = 0.0;
           results[currentIndex] = item.copyWith(
             isDownloaded: false,
             errorMessage: e.toString(),
@@ -178,13 +216,7 @@ class DownloadService {
           );
         }
 
-        onProgress(
-          completedCount: completedCount,
-          totalCount: totalCount,
-          overallProgress: completedCount / totalCount,
-          speedStr: calculateSpeed(),
-          currentFileName: item.name,
-        );
+        emitProgress(item.name, force: true);
       }
     }
 
@@ -195,8 +227,10 @@ class DownloadService {
 
     await Future.wait(activeWorkers);
     stopwatch.stop();
+    emitStopwatch.stop();
 
     if (_isCancelled) {
+      await StorageService.deleteDirectoryQuietly(batchDir);
       throw Exception('下载已取消');
     }
 

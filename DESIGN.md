@@ -177,6 +177,7 @@
 | 2026-09-27 | **重构非阻塞多任务下载队列架构** | 解决下载面板锁死界面的问题：面板可随时收起或后台化；引入多任务排队机制；增加全局常驻悬浮下载胶囊 (`FloatingDownloadPill`)，支持多帖子边看边下 |
 | 2026-11-12 | 修复选择图片后下载键遮挡与作者折叠状态错位 | 1. 修复首页选择媒体后底部操作栏被系统 TabBar 遮挡的问题，将悬浮位置调整为 TabBar 上方，清晰命名为【下载到相册】，并在大图查看器中补充单图下载按钮；2. 修复历史记录按作者收纳时初始状态判断导致的“点击第一个作者无法折叠、反倒折叠第二个作者”的状态逻辑错误，采用独立 `_collapsedAuthors` 集合管理。 |
 | 2026-11-13 | 修复批量下载未保持帖子原图顺序问题 | 1. iOS 原生侧新增 `pawchive_download/album` 通道，在 `PHAssetCreationRequest` 中显式写入按原图顺序单调递增的 `creationDate`（覆盖图片内嵌 EXIF 时间戳）并按序逐张等待提交，保证系统相册“拍摄日期”与“最近保存”均严格遵循帖子原序；2. `DownloadService` 改为按批次隔离目录并采用按总数位数补零的文件名序号（`01_`、`02_`…`10_`）；3. 修复 `ZipService` 未 `await` `archive 4.x` 异步 `addFile`/`close` 导致的 ZIP 竞态乱序与漏文件问题。 |
+| 2026-11-13 | 修复并发进度条倒退、取消不彻底及部分失败无提示问题 | 1. `DownloadService` 改用按任务项聚合分片进度并引入单调最大值钳位与节流触发（每 100ms），`DownloadTaskNotifier` 将下载阶段映射至 `0%–85%`、导出阶段映射至 `85%–99%`，彻底消除多并发下载进度条倒退跳变与频率抖动；2. 为 `AlbumService.saveToAlbum` 与 `ZipService.packageZip` 补齐 `isCancelled` 取消传播及 `!mounted` 防护，取消或移除任务时自动清理临时批次目录与未完成 `.zip` 文件；3. 统一统计下载与相册保存双阶段失败数，在 `DownloadSheet`、`FloatingDownloadPill` 及本地通知中明确提示部分失败数量并在 `retryTask` 时重置 `failedCount`。 |
 
 ---
 
