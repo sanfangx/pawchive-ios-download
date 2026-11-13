@@ -27,6 +27,10 @@ class FloatingDownloadPill extends ConsumerWidget {
         managerState.finishedTasks.any(
           (t) => t.status == DownloadStatus.completed && t.failedCount > 0,
         );
+    final allCancelled = !hasActive &&
+        managerState.finishedTasks.isNotEmpty &&
+        managerState.finishedTasks
+            .every((t) => t.status == DownloadStatus.cancelled);
 
     return GestureDetector(
       onTap: () {
@@ -77,6 +81,12 @@ class FloatingDownloadPill extends ConsumerWidget {
                   const Icon(
                     CupertinoIcons.exclamationmark_triangle_fill,
                     color: CupertinoColors.systemOrange,
+                    size: 20,
+                  )
+                else if (allCancelled)
+                  const Icon(
+                    CupertinoIcons.slash_circle,
+                    color: AppColors.textSecondary,
                     size: 20,
                   )
                 else
@@ -241,6 +251,11 @@ class FloatingDownloadPill extends ConsumerWidget {
     }
     if (state.finishedTasks.any((t) => t.status == DownloadStatus.failed)) {
       return '有任务下载失败，点击查看';
+    }
+    if (state.finishedTasks.isNotEmpty &&
+        state.finishedTasks
+            .every((t) => t.status == DownloadStatus.cancelled)) {
+      return '已取消，点击查看';
     }
     return '已完成，点击查看';
   }

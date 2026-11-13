@@ -1187,7 +1187,7 @@ void main() {
       expect(find.textContaining('已保存至 Documents · 4 项（1 项失败）'), findsOneWidget);
       expect(
         find.byIcon(CupertinoIcons.exclamationmark_triangle_fill),
-        findsOneWidget,
+        findsNWidgets(3),
       );
     });
   });

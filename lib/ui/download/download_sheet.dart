@@ -180,7 +180,7 @@ class DownloadSheet extends ConsumerWidget {
           // Top title, mode tag & action button
           Row(
             children: [
-              _buildStatusIcon(task.status),
+              _buildStatusIcon(task),
               const SizedBox(width: 8),
               Expanded(
                 child: Column(
@@ -408,8 +408,12 @@ class DownloadSheet extends ConsumerWidget {
     );
   }
 
-  Widget _buildStatusIcon(DownloadStatus status) {
-    switch (status) {
+  Widget _buildStatusIcon(DownloadTask task) {
+    if (task.status == DownloadStatus.completed && task.failedCount > 0) {
+      return const Icon(CupertinoIcons.exclamationmark_triangle_fill,
+          color: CupertinoColors.systemOrange, size: 20);
+    }
+    switch (task.status) {
       case DownloadStatus.queued:
         return const Icon(CupertinoIcons.clock_fill,
             color: AppColors.textSecondary, size: 20);
@@ -440,9 +444,9 @@ class DownloadSheet extends ConsumerWidget {
       case DownloadStatus.downloading:
         return '${task.completedCount}/${task.totalCount} 项 (${(task.progress * 100).toStringAsFixed(0)}%)';
       case DownloadStatus.savingToAlbum:
-        return '正在保存至相册...';
+        return '正在保存至相册 (${task.completedCount}/${task.totalCount})...';
       case DownloadStatus.packingZip:
-        return '正在打包 ZIP...';
+        return '正在打包 ZIP (${task.completedCount}/${task.totalCount})...';
       case DownloadStatus.completed:
         final baseText = task.exportMode == ExportMode.zip
             ? '已保存至 Documents · ${task.completedCount} 项'
