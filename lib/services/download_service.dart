@@ -77,6 +77,13 @@ class DownloadService {
       }
     }
 
+    final batchId =
+        'batch_${DateTime.now().microsecondsSinceEpoch}_${identityHashCode(items)}';
+    final batchDir = Directory(p.join(downloadDir.path, batchId));
+    if (!await batchDir.exists()) {
+      await batchDir.create(recursive: true);
+    }
+
     // Worker queue
     int nextIndex = 0;
     final activeWorkers = <Future<void>>[];
@@ -89,8 +96,18 @@ class DownloadService {
         if (currentIndex >= items.length) break;
 
         final item = items[currentIndex];
-        final safeName = sanitizeFilename('${currentIndex + 1}_${item.name}');
-        final savePath = p.join(downloadDir.path, safeName);
+        final indexWidth = items.length.toString().length.clamp(2, 6);
+        final paddedIndex =
+            (currentIndex + 1).toString().padLeft(indexWidth, '0');
+        var rawName = item.name.trim().isEmpty ? 'media' : item.name;
+        if (p.extension(rawName).isEmpty) {
+          final pathExt = p.extension(item.path.split('?').first);
+          rawName = pathExt.isNotEmpty
+              ? '$rawName$pathExt'
+              : '$rawName${item.isVideo ? '.mp4' : '.jpg'}';
+        }
+        final safeName = sanitizeFilename('${paddedIndex}_$rawName');
+        final savePath = p.join(batchDir.path, safeName);
 
         try {
           onProgress(

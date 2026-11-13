@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_settings.dart';
@@ -114,6 +115,21 @@ class StorageService {
             await entity.delete(recursive: true);
           } catch (_) {}
         }
+      }
+    } catch (_) {}
+  }
+
+  /// Delete a downloaded temp file and remove its parent batch folder once empty.
+  static Future<void> deleteTempFileAndPruneBatchDir(File file) async {
+    try {
+      final parentDir = file.parent;
+      if (await file.exists()) {
+        await file.delete();
+      }
+      if (p.basename(parentDir.path).startsWith('batch_') &&
+          await parentDir.exists() &&
+          await parentDir.list().isEmpty) {
+        await parentDir.delete();
       }
     } catch (_) {}
   }

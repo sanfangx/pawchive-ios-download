@@ -3,6 +3,7 @@ import 'package:archive/archive_io.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import '../models/media_item.dart';
+import 'storage_service.dart';
 
 class ZipService {
   /// Format safe ZIP archive name
@@ -47,22 +48,17 @@ class ZipService {
       final item = downloadedItems[i];
       final file = File(item.localPath!);
       if (await file.exists()) {
-        encoder.addFile(file, p.basename(item.localPath!));
+        await encoder.addFile(file, p.basename(item.localPath!));
       }
       onProgress?.call(i + 1, downloadedItems.length);
     }
 
-    encoder.close();
+    await encoder.close();
 
     // Clean up temporary downloaded files
     if (cleanCacheAfterPack) {
       for (final item in downloadedItems) {
-        try {
-          final f = File(item.localPath!);
-          if (await f.exists()) {
-            await f.delete();
-          }
-        } catch (_) {}
+        await StorageService.deleteTempFileAndPruneBatchDir(File(item.localPath!));
       }
     }
 

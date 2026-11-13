@@ -1,6 +1,10 @@
+import 'dart:io';
+import 'package:archive/archive.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:pawchive_download/models/app_settings.dart';
 import 'package:pawchive_download/models/download_task.dart';
 import 'package:pawchive_download/models/history_item.dart';
@@ -9,7 +13,10 @@ import 'package:pawchive_download/models/post_detail.dart';
 import 'package:pawchive_download/providers/download_provider.dart';
 import 'package:pawchive_download/providers/history_provider.dart';
 import 'package:pawchive_download/providers/post_provider.dart';
+import 'package:pawchive_download/services/album_service.dart';
+import 'package:pawchive_download/services/download_service.dart';
 import 'package:pawchive_download/services/url_parser.dart';
+import 'package:pawchive_download/services/zip_service.dart';
 import 'package:pawchive_download/ui/download/download_sheet.dart';
 import 'package:pawchive_download/ui/gallery/image_viewer_screen.dart';
 import 'package:pawchive_download/ui/history/history_screen.dart';
@@ -457,7 +464,203 @@ void main() {
       expect(find.byType(DownloadSheet), findsOneWidget);
     });
   });
+
+  group('Media Order Preservation Tests', () {
+    const MethodChannel pathProviderChannel =
+        MethodChannel('plugins.flutter.io/path_provider');
+    const MethodChannel albumChannel =
+        MethodChannel('pawchive_download/album');
+    const MethodChannel galChannel = MethodChannel('gal');
+
+    test('computeOrderedCreationTimestampsMs spaces items strictly ascending', () {
+      final now = DateTime.fromMillisecondsSinceEpoch(1700000100000);
+      final batch1 = AlbumService.computeOrderedCreationTimestampsMs(
+        5,
+        now: now,
+      );
+      expect(batch1.length, equals(5));
+      for (int i = 1; i < batch1.length; i++) {
+        expect(batch1[i], greaterThan(batch1[i - 1]));
+      }
+      expect(batch1.last, lessThan(now.millisecondsSinceEpoch));
+
+      // Back-to-back batch shortly after still advances strictly beyond batch1
+      final soon = now.add(const Duration(seconds: 2));
+      final batch2 = AlbumService.computeOrderedCreationTimestampsMs(
+        4,
+        now: soon,
+        previousEndMs: batch1.last,
+      );
+      expect(batch2.first, greaterThan(batch1.last));
+      for (int i = 1; i < batch2.length; i++) {
+        expect(batch2[i], greaterThan(batch2[i - 1]));
+      }
+      expect(batch2.last, lessThan(soon.millisecondsSinceEpoch));
+    });
+
+    test('DownloadService zero-pads 12+ concurrent downloads and ZipService preserves order', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final tempRoot = Directory.systemTemp.createTempSync('pawchive_order_test_');
+      final docsDir = Directory(p.join(tempRoot.path, 'docs'))..createSync();
+      final tmpDir = Directory(p.join(tempRoot.path, 'tmp'))..createSync();
+
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(pathProviderChannel, (call) async {
+        if (call.method == 'getTemporaryDirectory') return tmpDir.path;
+        if (call.method == 'getApplicationDocumentsDirectory') return docsDir.path;
+        return tempRoot.path;
+      });
+
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((req) async {
+        final seg = int.tryParse(req.uri.pathSegments.last) ?? 0;
+        // Delay earlier items longer so concurrent workers finish out of order
+        await Future.delayed(Duration(milliseconds: (12 - seg) * 8));
+        req.response.statusCode = HttpStatus.ok;
+        req.response.add(List<int>.filled(64, seg));
+        await req.response.close();
+      });
+
+      try {
+        final items = List<MediaItem>.generate(12, (index) {
+          final isExtensionless = index == 11;
+          return MediaItem(
+            id: 'item_$index',
+            name: isExtensionless ? 'page_last' : 'page_${index + 1}.jpg',
+            path: isExtensionless ? '/files/last.png' : '/files/${index + 1}.jpg',
+            downloadUrl: 'http://127.0.0.1:${server.port}/$index',
+            thumbnailUrl: 'http://127.0.0.1:${server.port}/$index',
+            isVideo: false,
+            isSelected: true,
+          );
+        });
+
+        final service = DownloadService();
+        final downloaded = await HttpOverrides.runWithHttpOverrides(
+          () => service.downloadBatch(
+            items: items,
+            concurrency: 4,
+            onProgress: ({
+              required completedCount,
+              required totalCount,
+              required overallProgress,
+              required speedStr,
+              required currentFileName,
+            }) {},
+          ),
+          _DirectHttpOverrides(),
+        );
+
+        expect(downloaded.length, equals(12));
+        expect(downloaded.every((e) => e.isDownloaded && e.localPath != null), isTrue);
+
+        final fileNames = downloaded.map((e) => p.basename(e.localPath!)).toList();
+        expect(fileNames[0], equals('01_page_1.jpg'));
+        expect(fileNames[1], equals('02_page_2.jpg'));
+        expect(fileNames[9], equals('10_page_10.jpg'));
+        expect(fileNames[11], equals('12_page_last.png'));
+
+        // Lexicographical sort order must match original post order
+        final lexSorted = List<String>.from(fileNames)..sort();
+        expect(lexSorted, equals(fileNames));
+
+        // ZipService preserves exact order and zero-padded names
+        final zipPath = await ZipService.packageZip(
+          items: downloaded,
+          zipFileName: 'order_test.zip',
+          cleanCacheAfterPack: true,
+        );
+        final archive = ZipDecoder().decodeBytes(File(zipPath).readAsBytesSync());
+        final archiveNames = archive.files.map((f) => f.name).toList();
+        expect(archiveNames, equals(fileNames));
+      } finally {
+        await server.close(force: true);
+        messenger.setMockMethodCallHandler(pathProviderChannel, null);
+        if (tempRoot.existsSync()) {
+          tempRoot.deleteSync(recursive: true);
+        }
+      }
+    });
+
+    test('AlbumService invokes iOS bridge sequentially in post order with ascending creationDate', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      AlbumService.resetOrderState();
+      AlbumService.debugOverrideIsIos = true;
+
+      final tempRoot = Directory.systemTemp.createTempSync('pawchive_album_test_');
+      final batchDir = Directory(p.join(tempRoot.path, 'batch_123'))..createSync();
+
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      final savedCalls = <Map<String, dynamic>>[];
+
+      messenger.setMockMethodCallHandler(galChannel, (call) async {
+        if (call.method == 'hasAccess' || call.method == 'requestAccess') {
+          return true;
+        }
+        return null;
+      });
+      messenger.setMockMethodCallHandler(albumChannel, (call) async {
+        if (call.method == 'saveMediaWithCreationDate') {
+          savedCalls.add(Map<String, dynamic>.from(call.arguments as Map));
+        }
+        return null;
+      });
+
+      try {
+        final items = List<MediaItem>.generate(10, (index) {
+          final prefix = (index + 1).toString().padLeft(2, '0');
+          final file = File(p.join(batchDir.path, '${prefix}_img.jpg'))
+            ..writeAsBytesSync([1, 2, 3, index]);
+          return MediaItem(
+            id: 'att_$index',
+            name: 'img.jpg',
+            path: '/img.jpg',
+            downloadUrl: 'https://example.com/$index.jpg',
+            thumbnailUrl: 'https://example.com/t_$index.jpg',
+            isVideo: index == 9,
+            isDownloaded: true,
+            localPath: file.path,
+          );
+        });
+
+        final savedCount = await AlbumService.saveToAlbum(
+          items: items,
+          cleanCacheAfterSave: true,
+        );
+
+        expect(savedCount, equals(10));
+        expect(savedCalls.length, equals(10));
+
+        for (int i = 0; i < 10; i++) {
+          final prefix = (i + 1).toString().padLeft(2, '0');
+          expect(p.basename(savedCalls[i]['path'] as String), equals('${prefix}_img.jpg'));
+          expect(savedCalls[i]['isVideo'], equals(i == 9));
+          if (i > 0) {
+            expect(
+              savedCalls[i]['creationTimestampMs'] as int,
+              greaterThan(savedCalls[i - 1]['creationTimestampMs'] as int),
+            );
+          }
+        }
+
+        // Batch directory should be cleaned up once empty
+        expect(batchDir.existsSync(), isFalse);
+      } finally {
+        AlbumService.debugOverrideIsIos = null;
+        AlbumService.resetOrderState();
+        messenger.setMockMethodCallHandler(galChannel, null);
+        messenger.setMockMethodCallHandler(albumChannel, null);
+        if (tempRoot.existsSync()) {
+          tempRoot.deleteSync(recursive: true);
+        }
+      }
+    });
+  });
 }
+
+class _DirectHttpOverrides extends HttpOverrides {}
 
 class FakeHistoryNotifier extends HistoryNotifier {
   FakeHistoryNotifier(List<HistoryItem> initial) : super() {
