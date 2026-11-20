@@ -12,18 +12,21 @@ import 'package:pawchive_download/models/download_task.dart';
 import 'package:pawchive_download/models/history_item.dart';
 import 'package:pawchive_download/models/media_item.dart';
 import 'package:pawchive_download/models/post_detail.dart';
+import 'package:pawchive_download/models/post_target.dart';
 import 'package:pawchive_download/providers/download_provider.dart';
 import 'package:pawchive_download/providers/history_provider.dart';
 import 'package:pawchive_download/providers/post_provider.dart';
 import 'package:pawchive_download/services/album_service.dart';
 import 'package:pawchive_download/services/download_service.dart';
 import 'package:pawchive_download/services/notification_service.dart';
+import 'package:pawchive_download/services/pawchive_api.dart';
 import 'package:pawchive_download/services/url_parser.dart';
 import 'package:pawchive_download/services/zip_service.dart';
 import 'package:pawchive_download/ui/download/download_sheet.dart';
 import 'package:pawchive_download/ui/download/floating_download_pill.dart';
 import 'package:pawchive_download/ui/gallery/image_viewer_screen.dart';
 import 'package:pawchive_download/ui/history/history_screen.dart';
+import 'package:pawchive_download/ui/home/home_screen.dart';
 import 'package:pawchive_download/ui/main_tab_scaffold.dart';
 
 void main() {
@@ -1191,6 +1194,129 @@ void main() {
       );
     });
   });
+
+  group('Paste and Parse Behavior Tests', () {
+    testWidgets(
+      'Tapping 粘贴并解析 after parsing A reads new clipboard link B without clearing input, while preserving manual edits',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final fakeApi = FakePawchiveApi();
+        String? clipboardText = 'https://pawchive.pw/patreon/user/100/post/111';
+
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'Clipboard.getData') {
+            if (clipboardText == null) return null;
+            return <String, dynamic>{'text': clipboardText};
+          }
+          return null;
+        });
+
+        try {
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: [
+                pawchiveApiProvider.overrideWithValue(fakeApi),
+                historyProvider.overrideWith(
+                  (ref) => FakeHistoryNotifier(const []),
+                ),
+              ],
+              child: const CupertinoApp(
+                home: HomeScreen(),
+              ),
+            ),
+          );
+          await tester.pump(const Duration(milliseconds: 200));
+
+          // 1. Parse link A from clipboard
+          expect(find.text('粘贴并解析'), findsOneWidget);
+          await tester.tap(find.text('粘贴并解析'));
+          await tester.pump(const Duration(milliseconds: 300));
+
+          expect(fakeApi.fetchedTargets.map((t) => t.postId), equals(['111']));
+          expect(find.text('Post 111'), findsOneWidget);
+
+          // 2. Copy link B WITHOUT clearing link bar, tap 粘贴并解析 -> must parse B, not A
+          clipboardText = 'https://pawchive.pw/patreon/user/200/post/222';
+          expect(find.text('粘贴并解析'), findsOneWidget);
+          await tester.tap(find.text('粘贴并解析'));
+          await tester.pump(const Duration(milliseconds: 300));
+
+          expect(
+            fakeApi.fetchedTargets.map((t) => t.postId),
+            equals(['111', '222']),
+          );
+          expect(find.text('Post 222'), findsOneWidget);
+          final textField =
+              tester.widget<CupertinoTextField>(find.byType(CupertinoTextField));
+          expect(textField.controller?.text, equals(clipboardText));
+
+          // 3. Manually type link C while clipboard still holds B -> button becomes 解析 and parses C
+          const manualLinkC = 'https://pawchive.pw/fanbox/user/300/post/333';
+          await tester.enterText(find.byType(CupertinoTextField), manualLinkC);
+          await tester.pump(const Duration(milliseconds: 100));
+
+          expect(find.text('解析'), findsOneWidget);
+          await tester.tap(find.text('解析'));
+          await tester.pump(const Duration(milliseconds: 300));
+
+          expect(
+            fakeApi.fetchedTargets.map((t) => t.postId),
+            equals(['111', '222', '333']),
+          );
+          expect(find.text('Post 333'), findsOneWidget);
+          // After manual URL is parsed, button returns to 粘贴并解析
+          expect(find.text('粘贴并解析'), findsOneWidget);
+
+          // 4. Copy link D and tap 粘贴并解析 -> parses D directly
+          clipboardText = 'https://pawchive.pw/fanbox/user/400/post/444';
+          await tester.tap(find.text('粘贴并解析'));
+          await tester.pump(const Duration(milliseconds: 300));
+
+          expect(
+            fakeApi.fetchedTargets.map((t) => t.postId),
+            equals(['111', '222', '333', '444']),
+          );
+          expect(find.text('Post 444'), findsOneWidget);
+
+          // 5. Empty clipboard falls back to re-parsing current link D
+          clipboardText = null;
+          await tester.tap(find.text('粘贴并解析'));
+          await tester.pump(const Duration(milliseconds: 300));
+
+          expect(
+            fakeApi.fetchedTargets.map((t) => t.postId),
+            equals(['111', '222', '333', '444', '444']),
+          );
+
+          // Let toast timers finish cleanly before teardown
+          await tester.pump(const Duration(seconds: 3));
+        } finally {
+          messenger.setMockMethodCallHandler(SystemChannels.platform, null);
+        }
+      },
+    );
+  });
+}
+
+class FakePawchiveApi extends PawchiveApi {
+  final List<PostTarget> fetchedTargets = [];
+
+  @override
+  Future<PostDetail> fetchPost(PostTarget target) async {
+    fetchedTargets.add(target);
+    return PostDetail(
+      target: target,
+      id: target.postId,
+      title: 'Post ${target.postId}',
+      authorName: 'Artist ${target.userId}',
+      authorAvatarUrl: '',
+      publishedAt: '2026-11-20',
+      contentHtml: '',
+      items: const [],
+    );
+  }
 }
 
 class FakeDownloadTaskNotifier extends DownloadTaskNotifier {

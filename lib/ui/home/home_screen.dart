@@ -25,6 +25,8 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   final TextEditingController _urlController = TextEditingController();
   bool _isLoading = false;
+  bool _hasUnparsedManualEdit = false;
+  bool _isManualInputValidUrl = false;
 
   @override
   void initState() {
@@ -33,7 +35,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final pending = ref.read(pendingUrlToLoadProvider);
       if (pending != null && pending.isNotEmpty) {
-        _urlController.text = pending;
+        _setUrlTextProgrammatically(pending);
         ref.read(pendingUrlToLoadProvider.notifier).state = null;
         _parseAndLoad(pending);
       }
@@ -46,32 +48,77 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.dispose();
   }
 
+  void _handleInputChanged(String value) {
+    final trimmed = value.trim();
+    final nextEdited = trimmed.isNotEmpty;
+    final nextValid = nextEdited && UrlParser.isValid(trimmed);
+    if (nextEdited != _hasUnparsedManualEdit ||
+        nextValid != _isManualInputValidUrl) {
+      setState(() {
+        _hasUnparsedManualEdit = nextEdited;
+        _isManualInputValidUrl = nextValid;
+      });
+    }
+  }
+
+  void _clearManualEditFlag() {
+    if (!_hasUnparsedManualEdit && !_isManualInputValidUrl) return;
+    if (mounted) {
+      setState(() {
+        _hasUnparsedManualEdit = false;
+        _isManualInputValidUrl = false;
+      });
+    } else {
+      _hasUnparsedManualEdit = false;
+      _isManualInputValidUrl = false;
+    }
+  }
+
+  void _setUrlTextProgrammatically(String text) {
+    _urlController.text = text;
+    _clearManualEditFlag();
+  }
+
   // Unified "粘贴并解析" (Paste & Parse) action
   Future<void> _pasteAndParse() async {
     HapticFeedback.selectionClick();
-    String textToParse = _urlController.text.trim();
+    final currentText = _urlController.text.trim();
 
-    // If input is empty, read directly from clipboard
-    if (textToParse.isEmpty) {
-      final data = await Clipboard.getData(Clipboard.kTextPlain);
-      if (data?.text != null && data!.text!.trim().isNotEmpty) {
-        textToParse = data.text!.trim();
-        _urlController.text = textToParse;
-      } else {
-        if (!mounted) return;
-        showCupertinoToast(
-          context,
-          '剪贴板中未找到文本，请输入或复制链接后重试',
-          isError: true,
-        );
-        return;
-      }
+    // If the user manually entered a valid URL that hasn't been parsed yet,
+    // parse it directly instead of overwriting it with stale clipboard text.
+    if (_hasUnparsedManualEdit &&
+        currentText.isNotEmpty &&
+        UrlParser.isValid(currentText)) {
+      await _parseAndLoad(currentText);
+      return;
     }
 
-    _parseAndLoad(textToParse);
+    // Read clipboard and replace any previously parsed link in the input bar.
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    if (!mounted) return;
+    final clipText = data?.text?.trim() ?? '';
+
+    if (clipText.isNotEmpty) {
+      _setUrlTextProgrammatically(clipText);
+      await _parseAndLoad(clipText);
+      return;
+    }
+
+    // Clipboard is empty: fall back to current input bar text if present.
+    if (currentText.isNotEmpty) {
+      await _parseAndLoad(currentText);
+      return;
+    }
+
+    showCupertinoToast(
+      context,
+      '剪贴板中未找到文本，请输入或复制链接后重试',
+      isError: true,
+    );
   }
 
   Future<void> _parseAndLoad(String inputUrl) async {
+    _clearManualEditFlag();
     final target = UrlParser.parse(inputUrl);
     if (target == null) {
       showCupertinoToast(
@@ -148,7 +195,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // Listen for cross-tab intent to load a post (from History Tab)
     ref.listen<String?>(pendingUrlToLoadProvider, (prev, next) {
       if (next != null && next.isNotEmpty) {
-        _urlController.text = next;
+        _setUrlTextProgrammatically(next);
         ref.read(pendingUrlToLoadProvider.notifier).state = null;
         _parseAndLoad(next);
       }
@@ -183,6 +230,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 onPressed: () {
                   HapticFeedback.lightImpact();
                   _urlController.clear();
+                  _clearManualEditFlag();
                   ref.read(postDetailProvider.notifier).reset();
                 },
                 child: const Text(
@@ -303,6 +351,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               clearButtonMode: OverlayVisibilityMode.editing,
                               keyboardType: TextInputType.url,
                               textInputAction: TextInputAction.go,
+                              onChanged: _handleInputChanged,
                               onSubmitted: (val) {
                                 if (val.trim().isNotEmpty) _parseAndLoad(val.trim());
                               },
@@ -310,7 +359,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           ),
                           const SizedBox(width: 6),
 
-                          // "粘贴并解析" Primary Button
+                          // "粘贴并解析" / "解析" Primary Button
                           CupertinoButton(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 14,
@@ -324,18 +373,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                     color: CupertinoColors.white,
                                     radius: 8,
                                   )
-                                : const Row(
+                                : Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Icon(
-                                        CupertinoIcons.arrow_down_doc_fill,
+                                        _hasUnparsedManualEdit &&
+                                                _isManualInputValidUrl
+                                            ? CupertinoIcons.arrow_right_circle_fill
+                                            : CupertinoIcons.arrow_down_doc_fill,
                                         size: 15,
                                         color: CupertinoColors.white,
                                       ),
-                                      SizedBox(width: 4),
+                                      const SizedBox(width: 4),
                                       Text(
-                                        '粘贴并解析',
-                                        style: TextStyle(
+                                        _hasUnparsedManualEdit &&
+                                                _isManualInputValidUrl
+                                            ? '解析'
+                                            : '粘贴并解析',
+                                        style: const TextStyle(
                                           fontSize: 13,
                                           fontWeight: FontWeight.bold,
                                           color: CupertinoColors.white,
